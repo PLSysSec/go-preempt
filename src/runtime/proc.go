@@ -1,4 +1,4 @@
-// Copyright 2014 The Go Authors. All rights reserved.
+// Copyright 2014 The Gc Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -758,6 +758,13 @@ func schedinit() {
 	if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {
 		procs = n
 	}
+	if n, ok := atoi32(gogetenv("GOFORCEPREMPTNS")); ok && n > 0 {
+		forcePreemptNS = int64(n)
+	}
+	if n, ok := atoi32(gogetenv("GOSYSMONDELAY")); ok && n > 0 {
+		sysmonDelay = uint32(n)
+	}
+
 	if procresize(procs) != nil {
 		throw("unknown runnable goroutine during bootstrap")
 	}
@@ -1051,7 +1058,7 @@ func casgstatus(gp *g, oldval, newval uint32) {
 	releaseLockRank(lockRankGscan)
 
 	// See https://golang.org/cl/21503 for justification of the yield delay.
-	const yieldDelay = 5 * 1000
+	const yieldDelay = 1 * 1000
 	var nextYield int64
 
 	// loop if gp->atomicstatus is in a scan state giving
@@ -5509,6 +5516,8 @@ var forcegcperiod int64 = 2 * 60 * 1e9
 // golang.org/issue/42515 is needed on NetBSD.
 var needSysmonWorkaround bool = false
 
+var sysmonDelay uint32 = 10 * 1000
+
 // Always runs without a P, so write barriers are not allowed.
 //
 //go:nowritebarrierrec
@@ -5523,14 +5532,17 @@ func sysmon() {
 	delay := uint32(0)
 
 	for {
-		if idle == 0 { // start with 20us sleep...
-			delay = 20
-		} else if idle > 50 { // start doubling the sleep after 1ms...
-			delay *= 2
-		}
-		if delay > 10*1000 { // up to 10ms
-			delay = 10 * 1000
-		}
+		/*
+			if idle == 0 { // start with 20us sleep...
+				delay = 1
+			} else if idle > 50 { // start doubling the sleep after 1ms...
+				delay *= 2
+			}
+			if delay > 100 { // up to 10ms
+				delay = 100
+			}
+		*/
+		delay = sysmonDelay
 		usleep(delay)
 
 		// sysmon should not enter deep sleep if schedtrace is enabled so that
@@ -5667,7 +5679,7 @@ type sysmontick struct {
 
 // forcePreemptNS is the time slice given to a G before it is
 // preempted.
-const forcePreemptNS = 10 * 1000 * 1000 // 10ms
+var forcePreemptNS int64 = 1000 // 10ms
 
 func retake(now int64) uint32 {
 	n := 0
