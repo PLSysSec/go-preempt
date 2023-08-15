@@ -47,7 +47,8 @@
 #define SYS_openat		257
 #define SYS_faccessat		269
 #define SYS_pipe2		293
-#define SYS_uintr_create_fd	473
+#define SYS_uintr_register_handler	471
+#define SYS_uintr_create_fd		473
 
 TEXT runtime·exit(SB),NOSPLIT,$0-4
 	MOVL	code+0(FP), DI
@@ -706,6 +707,14 @@ TEXT runtime·sbrk0(SB),NOSPLIT,$0-8
 	MOVQ	AX, ret+0(FP)
 	RET
 
+TEXT runtime·uintr_register_handler(SB),NOSPLIT,$0-16
+	MOVQ	ui_handler+0(FP), DI
+	MOVL	flags+8(FP), SI
+	MOVL	$SYS_uintr_register_handler, AX
+	SYSCALL
+	MOVL	AX, ret+16(FP)
+	RET
+
 TEXT runtime·uintr_create_fd(SB),NOSPLIT,$0-12
 	MOVL	vector+0(FP), DI
 	MOVL	flags+4(FP), SI
@@ -715,4 +724,28 @@ TEXT runtime·uintr_create_fd(SB),NOSPLIT,$0-12
 	JLS	2(PC)
 	MOVL	$-1, AX
 	MOVL	AX, ret+8(FP)
+	RET
+
+// Called using C ABI.
+TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
+	// Transition from C ABI to Go ABI.
+	PUSH_REGS_HOST_TO_ABI0()
+
+	// Set up ABIInternal environment: g in R14, cleared X15.
+	get_tls(R12)
+	MOVQ	g(R12), R14
+	PXOR	X15, X15
+
+	// Reserve space for spill slots.
+	NOP	SP		// disable vet stack checking
+	ADJSP   $24
+
+	// Call into the Go uintr handler
+	MOVL	DI, AX	// ui_frame
+	MOVQ	SI, BX	// vector
+	CALL	·uintrtrampgo<ABIInternal>(SB)
+
+	ADJSP	$-24
+
+	POP_REGS_HOST_TO_ABI0()
 	RET
