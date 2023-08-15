@@ -5654,6 +5654,13 @@ func sysmon() {
 			lasttrace = now
 			schedtrace(debug.scheddetail > 0)
 		}
+
+		// check if there are any new ms that we need to initialize
+		for mp := allm; mp != nil; mp = mp.alllink {
+			if mp.uipi_index == 0 {
+				mp.uipi_index = 1
+		    }
+		}
 		unlock(&sched.sysmonlock)
 	}
 }

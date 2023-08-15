@@ -409,6 +409,8 @@ func gettid() uint32
 func minit() {
 	minitSignals()
 
+	minitUserInterrupts()
+
 	// Cgo-created threads and the bootstrap m are missing a
 	// procid. We need this for asynchronous preemption and it's
 	// useful in debuggers.

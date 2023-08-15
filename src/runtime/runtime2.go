@@ -609,6 +609,9 @@ type m struct {
 	// Whether this is a pending preemption signal on this M.
 	signalPending atomic.Uint32
 
+	uintr_fd      int32
+	uipi_index    int
+
 	dlogPerM
 
 	mOS

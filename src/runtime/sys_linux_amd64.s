@@ -47,6 +47,7 @@
 #define SYS_openat		257
 #define SYS_faccessat		269
 #define SYS_pipe2		293
+#define SYS_uintr_create_fd	473
 
 TEXT runtime·exit(SB),NOSPLIT,$0-4
 	MOVL	code+0(FP), DI
@@ -703,4 +704,15 @@ TEXT runtime·sbrk0(SB),NOSPLIT,$0-8
 	MOVL	$SYS_brk, AX
 	SYSCALL
 	MOVQ	AX, ret+0(FP)
+	RET
+
+TEXT runtime·uintr_create_fd(SB),NOSPLIT,$0-12
+	MOVL	vector+0(FP), DI
+	MOVL	flags+4(FP), SI
+	MOVL	$SYS_uintr_create_fd, AX
+	SYSCALL
+	CMPQ	AX, $0xfffffffffffff001
+	JLS	2(PC)
+	MOVL	$-1, AX
+	MOVL	AX, ret+8(FP)
 	RET

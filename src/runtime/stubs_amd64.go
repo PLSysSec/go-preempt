@@ -51,3 +51,6 @@ func unspillArgs()
 // getfp returns the frame pointer register of its caller or 0 if not implemented.
 // TODO: Make this a compiler intrinsic
 func getfp() uintptr
+
+//go:noescape
+func uintr_create_fd(vector int32, flags int32) int32
