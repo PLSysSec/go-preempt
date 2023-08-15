@@ -12,7 +12,7 @@ func minitUserInterrupts() {
 	fn := abi.FuncPCABI0(uintrtramp)
 	_ = uintr_register_handler(fn, 0)
 
-	mp.uintr_fd = uintr_create_fd(0, 0)
+	mp.uintrfd = uintr_create_fd(0, 0)
 }
 
 func uintrtrampgo() {

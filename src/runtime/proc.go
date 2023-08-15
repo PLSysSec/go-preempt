@@ -5657,9 +5657,15 @@ func sysmon() {
 
 		// check if there are any new ms that we need to initialize
 		for mp := allm; mp != nil; mp = mp.alllink {
-			if mp.uipi_index == 0 {
-				mp.uipi_index = 1
-		    }
+			if mp.uintrfd != 0 && !mp.senderregistered {
+				uipiindex := uintr_register_sender(mp.uintrfd, 0)
+				if uipiindex < 0 {
+					print("error registering UIPI sender: ", uipiindex, "\n")
+				} else {
+					mp.uipiindex = uipiindex
+					mp.senderregistered = true
+				}
+			}
 		}
 		unlock(&sched.sysmonlock)
 	}

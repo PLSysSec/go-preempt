@@ -49,6 +49,7 @@
 #define SYS_pipe2		293
 #define SYS_uintr_register_handler	471
 #define SYS_uintr_create_fd		473
+#define SYS_uintr_register_sender	474
 
 TEXT runtime·exit(SB),NOSPLIT,$0-4
 	MOVL	code+0(FP), DI
@@ -723,6 +724,14 @@ TEXT runtime·uintr_create_fd(SB),NOSPLIT,$0-12
 	CMPQ	AX, $0xfffffffffffff001
 	JLS	2(PC)
 	MOVL	$-1, AX
+	MOVL	AX, ret+8(FP)
+	RET
+
+TEXT runtime·uintr_register_sender(SB),NOSPLIT,$0-12
+	MOVL	fd+0(FP), DI
+	MOVL	flags+4(FP), SI
+	MOVL	$SYS_uintr_register_sender, AX
+	SYSCALL
 	MOVL	AX, ret+8(FP)
 	RET
 
