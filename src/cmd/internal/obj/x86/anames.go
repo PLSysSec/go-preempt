@@ -859,6 +859,7 @@ var Anames = []string{
 	"STRL",
 	"STRQ",
 	"STRW",
+	"STUI",
 	"SUBB",
 	"SUBL",
 	"SUBPD",

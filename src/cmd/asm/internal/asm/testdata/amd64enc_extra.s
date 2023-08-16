@@ -1059,5 +1059,7 @@ TEXT asmtest(SB),DUPOK|NOSPLIT,$0
 	RDPID DX                                // f30fc7fa
 	RDPID R11                               // f3410fc7fb
 
+	STUI	// f30f01ef
+
 	// End of tests.
 	RET

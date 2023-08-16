@@ -1489,6 +1489,7 @@ var optab =
 	{ASTOSL, ynone, Px, opBytes{0xab}},
 	{ASTOSQ, ynone, Pw, opBytes{0xab}},
 	{ASTOSW, ynone, Pe, opBytes{0xab}},
+	{ASTUI, ynone, Px, opBytes{0xf3, 0x0f, 0x01, 0xef}},
 	{ASUBB, yxorb, Pb, opBytes{0x2c, 0x80, 05, 0x28, 0x2a}},
 	{ASUBL, yaddl, Px, opBytes{0x83, 05, 0x2d, 0x81, 05, 0x29, 0x2b}},
 	{ASUBPD, yxm, Pe, opBytes{0x5c}},
