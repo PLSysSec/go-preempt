@@ -735,6 +735,10 @@ TEXT runtime·uintr_register_sender(SB),NOSPLIT,$0-12
 	MOVL	AX, ret+8(FP)
 	RET
 
+TEXT runtime·stui(SB),NOSPLIT,$0
+	STUI
+	RET
+
 // Called using C ABI.
 TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 	// Transition from C ABI to Go ABI.

@@ -13,6 +13,8 @@ func minitUserInterrupts() {
 	_ = uintr_register_handler(fn, 0)
 
 	mp.uintrfd = uintr_create_fd(0, 0)
+
+	stui()
 }
 
 func uintrtrampgo() {
