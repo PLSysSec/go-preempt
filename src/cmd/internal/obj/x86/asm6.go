@@ -237,6 +237,7 @@ const (
 	Zr_m
 	Zr_m_xm
 	Zrp_
+	Zrp_o
 	Z_ib
 	Z_il
 	Zm_ibo
@@ -862,6 +863,14 @@ var ysha1rnds4 = []ytab{
 	{Zibm_r, 2, argList{Yu2, Yxm, Yxr}},
 }
 
+var ysenduipi = []ytab {
+	{Zrp_o, 2, argList{Yrl}},
+}
+
+var yuiret = []ytab{
+	{Zlit, 2, argList{}},
+}
+
 // You are doasm, holding in your hand a *obj.Prog with p.As set to, say,
 // ACRC32, and p.From and p.To as operands (obj.Addr).  The linker scans optab
 // to find the entry with the given p.As and then looks through the ytable for
@@ -1451,6 +1460,7 @@ var optab =
 	{ASCASL, ynone, Px, opBytes{0xaf}},
 	{ASCASQ, ynone, Pw, opBytes{0xaf}},
 	{ASCASW, ynone, Pe, opBytes{0xaf}},
+	{ASENDUIPI, ysenduipi, Pf3, opBytes{0xc7, 06}},
 	{ASETCC, yscond, Pb, opBytes{0x0f, 0x93, 00}},
 	{ASETCS, yscond, Pb, opBytes{0x0f, 0x92, 00}},
 	{ASETEQ, yscond, Pb, opBytes{0x0f, 0x94, 00}},
@@ -1508,6 +1518,7 @@ var optab =
 	{obj.ATEXT, ytext, Px, opBytes{}},
 	{AUCOMISD, yxm, Pe, opBytes{0x2e}},
 	{AUCOMISS, yxm, Pm, opBytes{0x2e}},
+	{AUIRET, yuiret, Pf3, opBytes{0x01, 0xec}},
 	{AUNPCKHPD, yxm, Pe, opBytes{0x15}},
 	{AUNPCKHPS, yxm, Pm, opBytes{0x15}},
 	{AUNPCKLPD, yxm, Pe, opBytes{0x14}},
@@ -4812,6 +4823,13 @@ func (ab *AsmBuf) doasm(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog) {
 			case Zrp_:
 				ab.rexflag |= regrex[p.From.Reg] & (Rxb | 0x40)
 				ab.Put1(byte(op + reg[p.From.Reg]))
+
+			case Zrp_o:
+				// not sure what the implications of the rexflag are or why the
+				// last byte is 0xf7 (got it from disassembling)
+				ab.rexflag |= regrex[p.From.Reg] & (Rxb | 0x40)
+				ab.Put1(byte(op))
+				ab.Put1(byte(0xf7))
 
 			case Zcallcon, Zjmpcon:
 				if yt.zcase == Zcallcon {
