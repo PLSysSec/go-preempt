@@ -708,7 +708,7 @@ TEXT runtime·sbrk0(SB),NOSPLIT,$0-8
 	MOVQ	AX, ret+0(FP)
 	RET
 
-TEXT runtime·uintr_register_handler(SB),NOSPLIT,$0-16
+TEXT runtime·uintr_register_handler(SB),NOSPLIT,$0-20
 	MOVQ	ui_handler+0(FP), DI
 	MOVL	flags+8(FP), SI
 	MOVL	$SYS_uintr_register_handler, AX
@@ -739,10 +739,29 @@ TEXT runtime·stui(SB),NOSPLIT,$0
 	STUI
 	RET
 
+TEXT runtime·senduipi(SB),NOSPLIT,$0
+	MOVL		uipi_index+0(FP), DI
+	SENDUIPI	DI
+	RET
+
 // Called using C ABI.
 TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
-	// Transition from C ABI to Go ABI.
-	PUSH_REGS_HOST_TO_ABI0()
+	// UINTR only saves IP, SP, and rflags so we need to save
+	// caller-saved registers here. The call to uintrtrampgo
+	// below will save callee-saved registers as needed.
+	PUSH_CALLER_REGS()
+
+	// Only need to save X15 if UINTR is enabled during compilation. It
+	// seems that some code then uses X15 even though it's supposed to
+	// be a scratch register in Go.
+	// https://tip.golang.org/src/cmd/compile/abi-internal
+	ADJSP	$16
+	MOVUPS	X15, (0)(SP)
+
+	// Save registers that are clobbered below
+	PUSHQ	BX
+	PUSHQ	R12
+	PUSHQ	R14
 
 	// Set up ABIInternal environment: g in R14, cleared X15.
 	get_tls(R12)
@@ -754,11 +773,20 @@ TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 	ADJSP   $24
 
 	// Call into the Go uintr handler
-	MOVL	DI, AX	// ui_frame
-	MOVQ	SI, BX	// vector
+	LEAQ	ui_frame+0(FP), AX // ui_frame
+	MOVL	vector-8(FP), BX // vector
 	CALL	·uintrtrampgo<ABIInternal>(SB)
 
 	ADJSP	$-24
 
-	POP_REGS_HOST_TO_ABI0()
-	RET
+	POPQ	R14
+	POPQ	R12
+	POPQ	BX
+
+	MOVUPS	(0)(SP), X15
+	ADJSP	$-16
+
+	POP_CALLER_REGS()
+
+	ADJSP	$-8
+	UIRET

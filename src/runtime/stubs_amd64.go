@@ -63,4 +63,7 @@ func uintr_register_sender(fd int32, flags int32) int32
 
 func stui()
 
-func uintrtramp() // Called via C ABI
+func senduipi(uipi_index int32)
+
+// only IP, SP, and rflags are saved before this is called
+func uintrtramp(frame *__uintr_frame, vector int32)

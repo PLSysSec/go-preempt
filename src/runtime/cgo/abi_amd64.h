@@ -96,4 +96,30 @@
 	MOVQ	(5*8)(SP), BP	\
 	ADJSP	$-(REGS_HOST_TO_ABI0_STACK)
 
+#define CALLER_REGS (9*8)
+
+// Doesn't save XMM6 to XMM15 - make sure to not use these
+// before a context switch (where they will be saved)
+#define PUSH_CALLER_REGS()	\
+	PUSHQ	R11	\
+	PUSHQ	R10	\
+	PUSHQ	R9	\
+	PUSHQ	R8	\
+	PUSHQ	DI	\
+	PUSHQ	SI	\
+	PUSHQ	CX	\
+	PUSHQ	DX	\
+	PUSHQ	AX	\
+
+#define POP_CALLER_REGS()	\
+	POPQ	AX	\
+	POPQ	DX	\
+	POPQ	CX	\
+	POPQ	SI	\
+	POPQ	DI	\
+	POPQ	R8	\
+	POPQ	R9	\
+	POPQ	R10	\
+	POPQ	R11	\
+
 #endif

@@ -6,6 +6,12 @@ import (
 	"internal/abi"
 )
 
+type __uintr_frame struct {
+	rip uint64
+	rflags uint64
+	rsp uint64
+}
+
 func minitUserInterrupts() {
 	mp := getg().m
 
@@ -17,6 +23,8 @@ func minitUserInterrupts() {
 	stui()
 }
 
-func uintrtrampgo() {
-	print("uintrtampgo!")
+//go:nosplit
+//go:nowritebarrierrec
+func uintrtrampgo(frame *__uintr_frame, vector int32) {
+	// empty handler for now
 }
