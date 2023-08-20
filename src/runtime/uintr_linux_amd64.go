@@ -26,5 +26,9 @@ func minitUserInterrupts() {
 //go:nosplit
 //go:nowritebarrierrec
 func uintrtrampgo(frame *__uintr_frame, vector int32) {
-	// empty handler for now
+	// Acknowledge the preemption
+	gp := getg() // todo: safely fetch g
+	mp := gp.m
+	mp.preemptGen.Add(1)
+	mp.signalPending.Store(0)
 }

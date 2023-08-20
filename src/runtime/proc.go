@@ -683,6 +683,8 @@ func getGodebugEarly() string {
 	return env
 }
 
+var uintr_enabled = false
+
 // The bootstrap sequence is:
 //
 //	call osinit
@@ -757,6 +759,9 @@ func schedinit() {
 	procs := ncpu
 	if n, ok := atoi32(gogetenv("GOMAXPROCS")); ok && n > 0 {
 		procs = n
+	}
+	if n, ok := atoi32(gogetenv("UINTR")); ok && n == 1 {
+		uintr_enabled = true
 	}
 	if procresize(procs) != nil {
 		throw("unknown runnable goroutine during bootstrap")

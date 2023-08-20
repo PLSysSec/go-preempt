@@ -66,4 +66,4 @@ func stui()
 func senduipi(uipi_index int32)
 
 // only IP, SP, and rflags are saved before this is called
-func uintrtramp(frame *__uintr_frame, vector int32)
+func uintrtramp(ui_frame *__uintr_frame, vector int32)

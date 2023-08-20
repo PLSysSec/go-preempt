@@ -377,12 +377,20 @@ func preemptM(mp *m) {
 			pendingPreemptSignals.Add(1)
 		}
 
-		// If multiple threads are preempting the same M, it may send many
-		// signals to the same M such that it hardly make progress, causing
-		// live-lock problem. Apparently this could happen on darwin. See
-		// issue #37741.
-		// Only send a signal if there isn't already one pending.
-		signalM(mp, sigPreempt)
+		if uintr_enabled {
+			if mp.senderregistered {
+				// Send a UIPI
+				senduipi(mp.uipiindex)
+			}
+		} else {
+
+			// If multiple threads are preempting the same M, it may send many
+			// signals to the same M such that it hardly make progress, causing
+			// live-lock problem. Apparently this could happen on darwin. See
+			// issue #37741.
+			// Only send a signal if there isn't already one pending.
+			signalM(mp, sigPreempt)
+		}
 	}
 
 	if GOOS == "darwin" || GOOS == "ios" {
