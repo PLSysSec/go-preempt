@@ -27,7 +27,7 @@ func minitUserInterrupts() {
 //go:nowritebarrierrec
 func uintrtrampgo(frame *__uintr_frame, vector int32) {
 	// Acknowledge the preemption
-	gp := getg() // todo: safely fetch g
+	gp := getg()
 	mp := gp.m
 	mp.preemptGen.Add(1)
 	mp.signalPending.Store(0)

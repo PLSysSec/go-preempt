@@ -751,13 +751,6 @@ TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 	// below will save callee-saved registers as needed.
 	PUSH_CALLER_REGS()
 
-	// Only need to save X15 if UINTR is enabled during compilation. It
-	// seems that some code then uses X15 even though it's supposed to
-	// be a scratch register in Go.
-	// https://tip.golang.org/src/cmd/compile/abi-internal
-	ADJSP	$16
-	MOVUPS	X15, (0)(SP)
-
 	// Save registers that are clobbered below
 	PUSHQ	BX
 	PUSHQ	R12
@@ -770,21 +763,18 @@ TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 
 	// Reserve space for spill slots.
 	NOP	SP		// disable vet stack checking
-	ADJSP   $24
+	ADJSP   $16
 
 	// Call into the Go uintr handler
 	LEAQ	ui_frame+0(FP), AX // ui_frame
 	MOVL	vector-8(FP), BX // vector
 	CALL	·uintrtrampgo<ABIInternal>(SB)
 
-	ADJSP	$-24
+	ADJSP	$-16
 
 	POPQ	R14
 	POPQ	R12
 	POPQ	BX
-
-	MOVUPS	(0)(SP), X15
-	ADJSP	$-16
 
 	POP_CALLER_REGS()
 
