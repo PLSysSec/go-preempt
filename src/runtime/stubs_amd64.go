@@ -53,13 +53,16 @@ func unspillArgs()
 func getfp() uintptr
 
 //go:noescape
-func uintr_register_handler(ui_handler uintptr, flags int32) int32
+func uintr_register_handler(ui_handler uintptr, flags uint32) int32
 
 //go:noescape
-func uintr_create_fd(vector int32, flags int32) int32
+func uintr_create_fd(vector int32, flags uint32) int32
 
 //go:noescape
-func uintr_register_sender(fd int32, flags int32) int32
+func uintr_register_sender(fd int32, flags uint32) int32
+
+//go:noescape
+func uintr_alt_stack(sp uintptr, size uint64, flags uint32) int32
 
 func stui()
 

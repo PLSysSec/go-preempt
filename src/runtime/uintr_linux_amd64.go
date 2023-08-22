@@ -16,9 +16,25 @@ func minitUserInterrupts() {
 	mp := getg().m
 
 	fn := abi.FuncPCABI0(uintrtramp)
-	_ = uintr_register_handler(fn, 0)
+	ret := uintr_register_handler(fn, 0)
+	if ret < 0 {
+		print("error registering UIPI handler: ", ret, "\n")
+	}
+
+	// TODO: is it ok that we reuse gsignal's stack here or do we need a
+	// separate one for UIPI?
+	// Note: it seems that we have to specify a pointer to the top of the stack
+	// rather than the base of the stack as with sigaltstack.
+	s := &mp.gsignal.stack
+	ret = uintr_alt_stack(s.hi, uint64(s.hi - s.lo), 0)
+	if ret < 0 {
+		print("error registering alt stack for UIPI handler: ", ret, "\n")
+	}
 
 	mp.uintrfd = uintr_create_fd(0, 0)
+	if mp.uintrfd < 0 {
+		print("error creating UIPI fd: ", mp.uintrfd, "\n")
+	}
 
 	stui()
 }

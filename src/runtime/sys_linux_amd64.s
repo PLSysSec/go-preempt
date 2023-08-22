@@ -50,6 +50,7 @@
 #define SYS_uintr_register_handler	471
 #define SYS_uintr_create_fd		473
 #define SYS_uintr_register_sender	474
+#define SYS_uintr_alt_stack		478
 
 TEXT runtime·exit(SB),NOSPLIT,$0-4
 	MOVL	code+0(FP), DI
@@ -733,6 +734,15 @@ TEXT runtime·uintr_register_sender(SB),NOSPLIT,$0-12
 	MOVL	$SYS_uintr_register_sender, AX
 	SYSCALL
 	MOVL	AX, ret+8(FP)
+	RET
+
+TEXT runtime·uintr_alt_stack(SB),NOSPLIT,$0-28
+	MOVQ	sp+0(FP), DI
+	MOVQ	size+8(FP), SI
+	MOVL	flags+16(FP), DX
+	MOVL	$SYS_uintr_alt_stack, AX
+	SYSCALL
+	MOVL	AX, ret+24(FP)
 	RET
 
 TEXT runtime·stui(SB),NOSPLIT,$0
