@@ -4,12 +4,14 @@ package runtime
 
 import (
 	"internal/abi"
+	"internal/goarch"
+	"unsafe"
 )
 
 type __uintr_frame struct {
-	rip uint64
+	rip uintptr
 	rflags uint64
-	rsp uint64
+	rsp uintptr
 }
 
 func minitUserInterrupts() {
@@ -42,9 +44,58 @@ func minitUserInterrupts() {
 //go:nosplit
 //go:nowritebarrierrec
 func uintrtrampgo(frame *__uintr_frame, vector int32) {
-	// Acknowledge the preemption
 	gp := getg()
 	mp := gp.m
+	if gp == nil || (mp != nil && mp.isExtraInC) {
+		print("warning: unhandled case in uintrtrampgo\n")
+	}
+
+	// switch to the signal g
+	setg(mp.gsignal)
+
+	// check that we are on the alternate stack
+	sp := uintptr(unsafe.Pointer(&vector))
+	if sp < mp.gsignal.stack.lo || sp >= mp.gsignal.stack.hi {
+		print("error: not on alternate stack\n")
+	}
+
+	uintrhandler(gp, frame)
+
+	setg(gp)
+}
+
+// uintrhandler is invoked when a UIPI occurs. The global g will be
+// set to a gsignal goroutine and we will be running on the alternate
+// signal stack. The parameter gp will be the value of the global g
+// when the UIPI was delivered. The frame is the frame that was pushed
+// onto the stack during delivery of the UIPI.
+//
+// The garbage collector may have stopped the world, so write barriers
+// are not allowed.
+//
+//go:nowritebarrierrec
+func uintrhandler(gp *g, frame *__uintr_frame) {
+	gsignal := getg()
+	mp := gsignal.m
+
+	if wantAsyncPreempt(gp) {
+		ok, newpc := isAsyncSafePoint(gp, frame.rip, frame.rsp, 0)
+		if ok {
+			// Adjust the PC and inject a call to asyncPreempt
+			pushCall(abi.FuncPCABI0(asyncPreempt), newpc, frame)
+		}
+	}
+
+	// Acknowledge the preemption
 	mp.preemptGen.Add(1)
 	mp.signalPending.Store(0)
+}
+
+func pushCall(targetPC uintptr, resumePC uintptr, frame *__uintr_frame) {
+	// Make it look like we called target at resumePC
+	sp := frame.rsp
+	sp -= goarch.PtrSize
+	*(*uintptr)(unsafe.Pointer(sp)) = resumePC
+	frame.rsp = sp
+	frame.rip = targetPC
 }
