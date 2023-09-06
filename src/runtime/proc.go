@@ -288,6 +288,18 @@ func main() {
 	}
 	runExitHooks(0)
 
+	if preempt_info_enabled {
+		for i := 0; i < len(allp); i++ {
+			pp := allp[i]
+			if pp == nil {
+				// This can happen if procresize has grown
+				// allp but not yet created new Ps.
+				continue
+			}
+			println("schedtick:", pp.schedtick)
+		}
+	}
+
 	exit(0)
 	for {
 		var x *int32
@@ -684,6 +696,7 @@ func getGodebugEarly() string {
 }
 
 var uintr_enabled = false
+var preempt_info_enabled = false
 
 // The bootstrap sequence is:
 //
@@ -766,6 +779,9 @@ func schedinit() {
 	if n, ok := atoi32(gogetenv("GOFORCEPREEMPTNS")); ok && n > 0 {
 		forcePreemptNS = int64(n)
 		forcePreemptUS = uint32(forcePreemptNS / 1000)
+	}
+	if n, ok := atoi32(gogetenv("PREEMPT_INFO")); ok && n == 1 {
+		preempt_info_enabled = true
 	}
 	if procresize(procs) != nil {
 		throw("unknown runnable goroutine during bootstrap")
