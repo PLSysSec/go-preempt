@@ -763,6 +763,10 @@ func schedinit() {
 	if n, ok := atoi32(gogetenv("UINTR")); ok && n == 1 {
 		uintr_enabled = true
 	}
+	if n, ok := atoi32(gogetenv("GOFORCEPREEMPTNS")); ok && n > 0 {
+		forcePreemptNS = int64(n)
+		forcePreemptUS = uint32(forcePreemptNS / 1000)
+	}
 	if procresize(procs) != nil {
 		throw("unknown runnable goroutine during bootstrap")
 	}
@@ -5536,7 +5540,8 @@ func sysmon() {
 		if delay > 10*1000 { // up to 10ms
 			delay = 10 * 1000
 		}
-		usleep(delay)
+		// busy spin for now
+		// usleep(delay)
 
 		// sysmon should not enter deep sleep if schedtrace is enabled so that
 		// it can print that information at the right time.
@@ -5681,11 +5686,13 @@ type sysmontick struct {
 	schedwhen   int64
 	syscalltick uint32
 	syscallwhen int64
+	last_preempt  int64
 }
 
 // forcePreemptNS is the time slice given to a G before it is
 // preempted.
-const forcePreemptNS = 10 * 1000 * 1000 // 10ms
+var forcePreemptNS int64 = 10 * 1000 * 1000 // 10ms
+var forcePreemptUS uint32 = 10 * 1000 // 10ms
 
 func retake(now int64) uint32 {
 	n := 0
@@ -5708,11 +5715,17 @@ func retake(now int64) uint32 {
 		if s == _Prunning || s == _Psyscall {
 			// Preempt G if it's running for too long.
 			t := int64(pp.schedtick)
+			// Check last_preempt to avoid preempting again
+			// before the preempted goroutine has had a chance
+			// to enter the scheduler and advance schedtick.
 			if int64(pd.schedtick) != t {
 				pd.schedtick = uint32(t)
 				pd.schedwhen = now
-			} else if pd.schedwhen+forcePreemptNS <= now {
-				preemptone(pp)
+			} else if (pd.schedwhen+forcePreemptNS <= now) &&
+				(pd.last_preempt+forcePreemptNS <= now) {
+				if preemptone(pp) {
+					pd.last_preempt = now
+				}
 				// In case of syscall, preemptone() doesn't
 				// work, because there is no M wired to P.
 				sysretake = true

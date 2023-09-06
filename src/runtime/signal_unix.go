@@ -381,6 +381,8 @@ func preemptM(mp *m) {
 			if mp.senderregistered {
 				// Send a UIPI
 				senduipi(mp.uipiindex)
+			} else {
+				mp.signalPending.Store(0)
 			}
 		} else {
 

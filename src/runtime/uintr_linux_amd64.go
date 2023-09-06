@@ -75,9 +75,6 @@ func uintrtrampgo(frame *__uintr_frame, vector int32) {
 //
 //go:nowritebarrierrec
 func uintrhandler(gp *g, frame *__uintr_frame) {
-	gsignal := getg()
-	mp := gsignal.m
-
 	if wantAsyncPreempt(gp) {
 		ok, newpc := isAsyncSafePoint(gp, frame.rip, frame.rsp, 0)
 		if ok {
@@ -87,8 +84,8 @@ func uintrhandler(gp *g, frame *__uintr_frame) {
 	}
 
 	// Acknowledge the preemption
-	mp.preemptGen.Add(1)
-	mp.signalPending.Store(0)
+	gp.m.preemptGen.Add(1)
+	gp.m.signalPending.Store(0)
 }
 
 func pushCall(targetPC uintptr, resumePC uintptr, frame *__uintr_frame) {
