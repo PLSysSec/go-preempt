@@ -298,6 +298,10 @@ func main() {
 			}
 			println("schedtick:", pp.schedtick)
 		}
+		for mp := allm; mp != nil; mp = mp.alllink {
+			println("preemptgen:", mp.preemptGen.Load())
+			println("uipissent:", mp.uipissent)
+		}
 	}
 
 	exit(0)
@@ -5538,6 +5542,10 @@ var needSysmonWorkaround bool = false
 //
 //go:nowritebarrierrec
 func sysmon() {
+	if preempt_info_enabled {
+		println("force preempt ns:", forcePreemptNS, ", us:", forcePreemptUS)
+	}
+
 	lock(&sched.lock)
 	sched.nmsys++
 	checkdead()
