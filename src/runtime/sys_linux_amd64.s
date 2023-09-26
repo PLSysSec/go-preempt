@@ -762,6 +762,10 @@ TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 	PUSH_CALLER_REGS()
 
 	// Save registers that are clobbered below
+	NOP	SP		// disable vet stack checking
+	ADJSP   $16
+	MOVUPS  X15, (0)(SP)
+
 	PUSHQ	BX
 	PUSHQ	R12
 	PUSHQ	R14
@@ -772,7 +776,6 @@ TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 	PXOR	X15, X15
 
 	// Reserve space for spill slots.
-	NOP	SP		// disable vet stack checking
 	ADJSP   $16
 
 	// Call into the Go uintr handler
@@ -785,6 +788,9 @@ TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 	POPQ	R14
 	POPQ	R12
 	POPQ	BX
+
+	MOVUPS  (0)(SP), X15
+	ADJSP   $-16
 
 	POP_CALLER_REGS()
 
