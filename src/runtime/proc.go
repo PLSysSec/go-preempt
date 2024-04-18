@@ -301,6 +301,47 @@ func main() {
 		for mp := allm; mp != nil; mp = mp.alllink {
 			println("preemptgen:", mp.preemptGen.Load())
 			println("uipissent:", mp.uipissent)
+			println("asyncpreempts:", mp.asyncpreempts)
+			println("uintrhandler:", mp.uintrhandler)
+			println("asyncpreemptsent:", mp.asyncpreemptsent)
+			println("syncpreempts:", mp.syncpreempts)
+			println("selfyields:", mp.selfyields)
+			println("gopreempt_m_count:", mp.gopreempt_m_count)
+			println("goschedImpl_count:", mp.goschedImpl_count)
+			println("asyncPreempt2:", mp.asyncPreempt2)
+			println("asyncPreempt2_gopreempt_m:", mp.asyncPreempt2_gopreempt_m)
+			println("asyncPreempt2_preemptPark:", mp.asyncPreempt2_preemptPark)
+			println("schedule:", mp.schedule)
+			println("asyncticks:", mp.asyncticks)
+			println("syncticks:", mp.syncticks)
+			//println("asyncpreempt2_pending:", mp.asyncpreempt2_pending)
+			println("asyncpreempt2_start_time:",mp.asyncpreempt2_start_time)
+			println("asyncpreempt2_ticks:",mp.asyncpreempt2_ticks)
+			println("asyncpreempt2_execute:", mp.asyncpreempt2_ticks)
+			println("sched2ex:", mp.sched2ex)
+			println("scheduleticks:", mp.scheduleticks)
+			println("scheduleticks1:",mp.scheduleticks1)
+			println("scheduleticks2:",mp.scheduleticks2)
+			println("scheduleticks3:",mp.scheduleticks3)
+			println("scheduleticks4:",mp.scheduleticks4)
+			println("scheduleticks5:",mp.scheduleticks5)
+			println("scheduleticks6:",mp.scheduleticks6)
+			println("scheduleticks7:",mp.scheduleticks7)
+			println("uintrticks1:",mp.uintrticks1)
+			println("uintrticks2:",mp.uintrticks2)
+			println("uintrticks3:",mp.uintrticks3)
+			println("uintrticks4:",mp.uintrticks4)
+			println("uintrticks5:",mp.uintrticks5)
+			println("uintrticks6:",mp.uintrticks6)
+			println("uintrticks7:",mp.uintrticks7)
+			println("uintrticks8:",mp.uintrticks7)
+			println("uintrticks9:",mp.uintrticks7)
+			println("asyncpreempt_ticks:", mp.asyncpreempt_ticks)
+			println("asyncsafeticks0:",mp.asyncsafeticks0)
+			println("asyncsafeticks1:",mp.asyncsafeticks1)
+			println("asyncsafeticks2:",mp.asyncsafeticks2)
+			println("asyncsafeticks3:",mp.asyncsafeticks3)
+			println("asyncsafeticks4:",mp.asyncsafeticks4)
 		}
 	}
 
@@ -350,8 +391,15 @@ func forcegchelper() {
 //
 //go:nosplit
 func Gosched() {
+	mp := getg().m
+	mp.selfyields += 1
 	checkTimeouts()
 	mcall(gosched_m)
+}
+
+//go:nosplit
+func Cputicks() int64{
+	return cputicks()
 }
 
 // goschedguarded yields the processor like gosched, but also checks
@@ -3581,6 +3629,8 @@ func injectglist(glist *gList) {
 // Never returns.
 func schedule() {
 	mp := getg().m
+	start := cputicks()
+	mp.schedule += 1
 
 	if mp.locks != 0 {
 		throw("schedule: holding locks")
@@ -3588,6 +3638,7 @@ func schedule() {
 
 	if mp.lockedg != 0 {
 		stoplockedm()
+		mp.scheduleticks1 += cputicks() - start
 		execute(mp.lockedg.ptr(), false) // Never returns.
 	}
 
@@ -3608,7 +3659,9 @@ top:
 		throw("schedule: spinning with local work")
 	}
 
+	mp.scheduleticks2 += cputicks() - start
 	gp, inheritTime, tryWakeP := findRunnable() // blocks until work is available
+	mp.scheduleticks3 += cputicks() - start
 
 	if debug.dontfreezetheworld > 0 && freezing.Load() {
 		// See comment in freezetheworld. We don't want to perturb
@@ -3625,10 +3678,12 @@ top:
 	// This thread is going to run a goroutine and is not spinning anymore,
 	// so if it was marked as spinning we need to reset it now and potentially
 	// start a new spinning M.
+	mp.scheduleticks4 += cputicks() - start
 	if mp.spinning {
 		resetspinning()
 	}
 
+	mp.scheduleticks5 += cputicks() - start
 	if sched.disable.user && !schedEnabled(gp) {
 		// Scheduling of this goroutine is disabled. Put it on
 		// the list of pending runnable goroutines for when we
@@ -3648,9 +3703,12 @@ top:
 
 	// If about to schedule a not-normal goroutine (a GCworker or tracereader),
 	// wake a P if there is one.
+	mp.scheduleticks6 += cputicks() - start
 	if tryWakeP {
 		wakep()
 	}
+
+	mp.scheduleticks7 += cputicks() - start
 	if gp.lockedm != 0 {
 		// Hands off own p to the locked m,
 		// then blocks waiting for a new p.
@@ -3658,6 +3716,16 @@ top:
 		goto top
 	}
 
+	if mp.asyncpreempt2_pending {
+		mp.asyncpreempt2_ticks += cputicks() - mp.asyncpreempt2_start_time
+		mp.asyncpreempt2_pending = false
+		mp.asyncpreempt2_execute += 1
+	}
+
+	elapsed := cputicks() - start
+	mp.scheduleticks += elapsed
+	//println("scheduleticks_instance:", elapsed)
+	mp.sched2ex += 1
 	execute(gp, inheritTime)
 }
 
@@ -3775,6 +3843,7 @@ func park_m(gp *g) {
 }
 
 func goschedImpl(gp *g) {
+	gp.m.goschedImpl_count += 1
 	status := readgstatus(gp)
 	if status&^_Gscan != _Grunning {
 		dumpgstatus(gp)
@@ -3811,6 +3880,7 @@ func goschedguarded_m(gp *g) {
 }
 
 func gopreempt_m(gp *g) {
+	gp.m.gopreempt_m_count += 1
 	if traceEnabled() {
 		traceGoPreempt()
 	}
@@ -5543,7 +5613,7 @@ var needSysmonWorkaround bool = false
 //go:nowritebarrierrec
 func sysmon() {
 	if preempt_info_enabled {
-		println("force preempt ns:", forcePreemptNS, ", us:", forcePreemptUS)
+		println("force preempt ns:", forcePreemptNS, "\nforce preempt us:", forcePreemptUS)
 	}
 
 	lock(&sched.lock)
@@ -5837,11 +5907,14 @@ func preemptone(pp *p) bool {
 	// comparing the current stack pointer to gp->stackguard0.
 	// Setting gp->stackguard0 to StackPreempt folds
 	// preemption into the normal stack overflow check.
-	gp.stackguard0 = stackPreempt
+	if debug.asyncpreemptoff == 1 {
+		gp.stackguard0 = stackPreempt
+	}
 
 	// Request an async preemption of this P.
 	if preemptMSupported && debug.asyncpreemptoff == 0 {
 		pp.preempt = true
+		mp.asyncpreemptsent += 1
 		preemptM(mp)
 	}
 

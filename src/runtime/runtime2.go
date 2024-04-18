@@ -614,6 +614,55 @@ type m struct {
 	senderregistered      bool
 	uipiindex    int32
 	uipissent    int32
+	// counters for profiling
+	syncpreempts int32
+	asyncpreempts int32
+	asyncpreemptsent int32
+	uintrhandler int32
+	selfyields    int32
+	gopreempt_m_count int32
+	goschedImpl_count int32 
+	asyncPreempt2 int32
+	asyncPreempt2_gopreempt_m int32
+	asyncPreempt2_preemptPark int32
+	schedule int32
+	syncticks int64
+	asyncticks int64
+
+	uintrstart int64
+	uintrticks1 int64
+	uintrticks2 int64
+	uintrticks3 int64
+	uintrticks4 int64
+	uintrticks5 int64
+	uintrticks6 int64
+	uintrticks7 int64
+	uintrticks8 int64
+	uintrticks9 int64
+
+	asyncpreempt2_pending bool
+	asyncpreempt2_start_time int64
+	asyncpreempt2_ticks int64
+	asyncpreempt2_execute int32
+
+	scheduleticks int64
+	scheduleticks1 int64
+	scheduleticks2 int64
+	scheduleticks3 int64
+	scheduleticks4 int64
+	scheduleticks5 int64
+	scheduleticks6 int64
+	scheduleticks7 int64
+	sched2ex int32
+
+	asyncpreempt_start int64
+	asyncpreempt_ticks int64
+	
+	asyncsafeticks0 int64
+	asyncsafeticks1 int64
+	asyncsafeticks2 int64
+	asyncsafeticks3 int64
+	asyncsafeticks4 int64
 
 	dlogPerM
 

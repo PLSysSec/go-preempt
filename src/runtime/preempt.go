@@ -300,10 +300,16 @@ func asyncPreempt()
 //go:nosplit
 func asyncPreempt2() {
 	gp := getg()
+	gp.m.asyncpreempt_ticks += cputicks() - gp.m.asyncpreempt_start
+	gp.m.asyncpreempt2_pending = true
+	gp.m.asyncpreempt2_start_time = cputicks()
+	gp.m.asyncPreempt2 += 1
 	gp.asyncSafePoint = true
 	if gp.preemptStop {
+		gp.m.asyncPreempt2_preemptPark += 1
 		mcall(preemptPark)
 	} else {
+		gp.m.asyncPreempt2_gopreempt_m += 1
 		mcall(gopreempt_m)
 	}
 	gp.asyncSafePoint = false
@@ -360,7 +366,9 @@ func wantAsyncPreempt(gp *g) bool {
 // also needs to adjust the resumption PC. The new PC is returned in
 // the second result.
 func isAsyncSafePoint(gp *g, pc, sp, lr uintptr) (bool, uintptr) {
+	start := cputicks()
 	mp := gp.m
+	mp.asyncsafeticks0 += cputicks()-start
 
 	// Only user Gs can have safe-points. We check this first
 	// because it's extremely common that we'll catch mp in the
@@ -378,6 +386,7 @@ func isAsyncSafePoint(gp *g, pc, sp, lr uintptr) (bool, uintptr) {
 	if sp < gp.stack.lo || sp-gp.stack.lo < asyncPreemptStack {
 		return false, 0
 	}
+	mp.asyncsafeticks1 += cputicks()-start
 
 	// Check if PC is an unsafe-point.
 	f := findfunc(pc)
@@ -396,6 +405,7 @@ func isAsyncSafePoint(gp *g, pc, sp, lr uintptr) (bool, uintptr) {
 		// use the LR for unwinding, which will be bad.
 		return false, 0
 	}
+	mp.asyncsafeticks2 += cputicks()-start
 	up, startpc := pcdatavalue2(f, abi.PCDATA_UnsafePoint, pc)
 	if up == abi.UnsafePointUnsafe {
 		// Unsafe-point marked by compiler. This includes
@@ -413,6 +423,7 @@ func isAsyncSafePoint(gp *g, pc, sp, lr uintptr) (bool, uintptr) {
 		// except the ones that have funcFlag_SPWRITE set in f.flag.
 		return false, 0
 	}
+	mp.asyncsafeticks3 += cputicks()-start
 	// Check the inner-most name
 	u, uf := newInlineUnwinder(f, pc, nil)
 	name := u.srcFunc(uf).name()
@@ -443,5 +454,6 @@ func isAsyncSafePoint(gp *g, pc, sp, lr uintptr) (bool, uintptr) {
 		// Restart from the function entry at resumption.
 		return true, f.entry()
 	}
+	mp.asyncsafeticks4 += cputicks()-start
 	return true, pc
 }

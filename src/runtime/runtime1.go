@@ -323,6 +323,7 @@ var debug struct {
 	schedtrace         int32
 	tracebackancestors int32
 	asyncpreemptoff    int32
+	selfpreemptoff	   int32
 	harddecommit       int32
 	adaptivestackstart int32
 	tracefpunwindoff   int32

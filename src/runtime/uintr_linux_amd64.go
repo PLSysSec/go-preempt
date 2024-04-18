@@ -44,14 +44,18 @@ func minitUserInterrupts() {
 //go:nosplit
 //go:nowritebarrierrec
 func uintrtrampgo(frame *__uintr_frame, vector int32) {
+	start_ticks := cputicks()
 	gp := getg()
 	mp := gp.m
+	mp.uintrstart = start_ticks
 	if gp == nil || (mp != nil && mp.isExtraInC) {
 		print("warning: unhandled case in uintrtrampgo\n")
 	}
+	mp.uintrticks1 += cputicks() - start_ticks
 
 	// switch to the signal g
 	setg(mp.gsignal)
+	mp.uintrticks2 += cputicks() - start_ticks
 
 	// check that we are on the alternate stack
 	sp := uintptr(unsafe.Pointer(&vector))
@@ -59,9 +63,13 @@ func uintrtrampgo(frame *__uintr_frame, vector int32) {
 		print("error: not on alternate stack\n")
 	}
 
+	mp.uintrticks3 += cputicks() - start_ticks
 	uintrhandler(gp, frame)
+	mp.uintrticks7 += cputicks() - start_ticks
 
 	setg(gp)
+	mp.asyncticks += cputicks() - start_ticks
+	mp.asyncpreempt_start = cputicks()
 }
 
 // uintrhandler is invoked when a UIPI occurs. The global g will be
@@ -75,12 +83,18 @@ func uintrtrampgo(frame *__uintr_frame, vector int32) {
 //
 //go:nowritebarrierrec
 func uintrhandler(gp *g, frame *__uintr_frame) {
+	mp := gp.m
+	gp.m.uintrhandler += 1
 	if wantAsyncPreempt(gp) {
+		mp.uintrticks4 += cputicks()-mp.uintrstart
 		ok, newpc := isAsyncSafePoint(gp, frame.rip, frame.rsp, 0)
+		mp.uintrticks5 += cputicks()-mp.uintrstart
 		if ok {
 			// Adjust the PC and inject a call to asyncPreempt
+			gp.m.asyncpreempts += 1
 			pushCall(abi.FuncPCABI0(asyncPreempt), newpc, frame)
 		}
+		mp.uintrticks6 += cputicks()-mp.uintrstart
 	}
 
 	// Acknowledge the preemption

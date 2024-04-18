@@ -964,6 +964,7 @@ func round2(x int32) int32 {
 //
 //go:nowritebarrierrec
 func newstack() {
+	start_ticks := nanotime()
 	thisg := getg()
 	// TODO: double check all gp. shouldn't be getg().
 	if thisg.m.morebuf.g.ptr().stackguard0 == stackFork {
@@ -1071,6 +1072,8 @@ func newstack() {
 		}
 
 		// Act like goroutine called runtime.Gosched.
+		thisg.m.syncticks += nanotime() - start_ticks
+		thisg.m.syncpreempts += 1
 		gopreempt_m(gp) // never return
 	}
 
