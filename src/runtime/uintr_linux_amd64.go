@@ -44,6 +44,7 @@ func minitUserInterrupts() {
 //go:nosplit
 //go:nowritebarrierrec
 func uintrtrampgo(frame *__uintr_frame, vector int32) {
+	/*
 	gp := getg()
 	mp := gp.m
 	if gp == nil || (mp != nil && mp.isExtraInC) {
@@ -62,6 +63,7 @@ func uintrtrampgo(frame *__uintr_frame, vector int32) {
 	uintrhandler(gp, frame)
 
 	setg(gp)
+	*/
 }
 
 // uintrhandler is invoked when a UIPI occurs. The global g will be

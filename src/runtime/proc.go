@@ -354,6 +354,10 @@ func Gosched() {
 	mcall(gosched_m)
 }
 
+func Cputiks() {
+	cputicks()
+}
+
 // goschedguarded yields the processor like gosched, but also checks
 // for forbidden states and opts out of the yield in those cases.
 //
@@ -5706,17 +5710,17 @@ func sysmon() {
 }
 
 type sysmontick struct {
-	schedtick   uint32
-	schedwhen   int64
-	syscalltick uint32
-	syscallwhen int64
-	last_preempt  int64
+	schedtick    uint32
+	schedwhen    int64
+	syscalltick  uint32
+	syscallwhen  int64
+	last_preempt int64
 }
 
 // forcePreemptNS is the time slice given to a G before it is
 // preempted.
 var forcePreemptNS int64 = 10 * 1000 * 1000 // 10ms
-var forcePreemptUS uint32 = 10 * 1000 // 10ms
+var forcePreemptUS uint32 = 10 * 1000       // 10ms
 
 func retake(now int64) uint32 {
 	n := 0
@@ -5837,7 +5841,9 @@ func preemptone(pp *p) bool {
 	// comparing the current stack pointer to gp->stackguard0.
 	// Setting gp->stackguard0 to StackPreempt folds
 	// preemption into the normal stack overflow check.
-	gp.stackguard0 = stackPreempt
+	if debug.asyncpreemptoff == 1 {
+		gp.stackguard0 = stackPreempt
+	}
 
 	// Request an async preemption of this P.
 	if preemptMSupported && debug.asyncpreemptoff == 0 {
