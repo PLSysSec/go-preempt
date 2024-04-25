@@ -354,7 +354,7 @@ func Gosched() {
 	mcall(gosched_m)
 }
 
-func Cputiks() {
+func Cputicks() {
 	cputicks()
 }
 
