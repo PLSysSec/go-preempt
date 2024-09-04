@@ -610,10 +610,25 @@ type m struct {
 	signalPending atomic.Uint32
 
 	// state for sending and receiving user interrupts
-	uintrfd      int32
-	senderregistered      bool
-	uipiindex    int32
-	uipissent    int32
+	uintrfd          int32
+	senderregistered bool
+	uipiindex        int32
+	uipissent        int32
+
+	// counters for netpoll measurement
+	netpoll_ticks       int64
+	netpoll_count       int32
+	netpoll_empty_ticks int64
+	netpoll_empty_count int32
+	netpoll_count2      int32
+	injectg_count       int32
+	injectg_global1     int32
+	injectg_global2     int32
+	injectg_local       int32
+
+	get_netq   int32
+	get_local  int32
+	get_global int32
 
 	dlogPerM
 
@@ -647,6 +662,9 @@ type p struct {
 	runqhead uint32
 	runqtail uint32
 	runq     [256]guintptr
+	netqhead uint32
+	netqtail uint32
+	netq     [256]guintptr
 	// runnext, if non-nil, is a runnable G that was ready'd by
 	// the current G and should be run next instead of what's in
 	// runq if there's time remaining in the running G's time

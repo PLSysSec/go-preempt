@@ -140,6 +140,10 @@ var runtimeInitTime int64
 // Value to use for signal mask for newly created M's.
 var initSigmask sigset
 
+var dedicated_netpoll_count int32
+var dedicated_netpoll_global int32
+var dedicated_netpoll_local int32
+
 // The main goroutine.
 func main() {
 	mp := getg().m
@@ -169,6 +173,11 @@ func main() {
 		systemstack(func() {
 			newm(sysmon, nil, -1)
 		})
+		if dedicated_netcore_enabled {
+			systemstack(func() {
+				newm(dedicatednetpoller, nil, -1)
+			})
+		}
 	}
 
 	// Lock the main goroutine onto this, the main OS thread,
@@ -298,9 +307,44 @@ func main() {
 			}
 			println("schedtick:", pp.schedtick)
 		}
+
+		preempt_gen_sum := uint32(0)
+
+		var total_injectg_global1 int32
+		var total_injectg_global2 int32
+		var total_injectg_local int32
+		var total_injectg_count int32
+
 		for mp := allm; mp != nil; mp = mp.alllink {
+			preempt_gen_sum += mp.preemptGen.Load()
 			println("preemptgen:", mp.preemptGen.Load())
 			println("uipissent:", mp.uipissent)
+			// if mp.netpoll_count == 0 {
+			// 	println("netpoll ticks:", mp.netpoll_ticks, "count:", mp.netpoll_count)
+			// } else {
+			// 	println("netpoll ticks:", mp.netpoll_ticks, "count:", mp.netpoll_count, "ticks/count:", mp.netpoll_ticks/int64(mp.netpoll_count))
+			// }
+			// if mp.netpoll_empty_count == 0 {
+			// 	println("empty netpoll ticks:", mp.netpoll_empty_ticks, "count:", mp.netpoll_empty_count)
+			// } else {
+			// 	println("empty netpoll ticks:", mp.netpoll_empty_ticks, "count:", mp.netpoll_empty_count, "ticks/count:", mp.netpoll_empty_ticks/int64(mp.netpoll_empty_count))
+			// }
+			// println("netpoll2 count:", mp.netpoll_count2)
+			println("injectg count:", mp.injectg_count, "global1:", mp.injectg_global1, "global2:", mp.injectg_global2, "local:", mp.injectg_local)
+			// if mp.injectg_count != 0 {
+			// 	println("(per) inject global1:", mp.injectg_global1/mp.injectg_count, "global2:", mp.injectg_global2/mp.injectg_count, "local:", mp.injectg_local/mp.injectg_count)
+			// }
+			total_injectg_count += mp.injectg_count
+			total_injectg_global1 += mp.injectg_global1
+			total_injectg_global2 += mp.injectg_global2
+			total_injectg_local += mp.injectg_local
+		}
+		println("+++ total injectg count:", total_injectg_count, "global1:", total_injectg_global1, "gloabl2:", total_injectg_global2, "local:", total_injectg_local, "all:", total_injectg_global1+total_injectg_global2+total_injectg_local)
+		println("+++ dedicated netpoll count:", dedicated_netpoll_count, "global:", dedicated_netpoll_global, "local:", dedicated_netpoll_local)
+		println("total preemptgen:", preempt_gen_sum)
+
+		for mp := allm; mp != nil; mp = mp.alllink {
+			println("get netq:", mp.get_netq, "local:", mp.get_local, "global:", mp.get_global)
 		}
 	}
 
@@ -701,6 +745,11 @@ func getGodebugEarly() string {
 
 var uintr_enabled = false
 var preempt_info_enabled = false
+
+var sysmon_freq_netpoll_enabled = true
+var sysmon_localrunq_enabled = false
+var dedicated_netcore_enabled = false
+var netpoll_prioritized = false
 
 // The bootstrap sequence is:
 //
@@ -2986,12 +3035,55 @@ top:
 		return gp, inheritTime, false
 	}
 
+	if dedicated_netcore_enabled || sysmon_localrunq_enabled {
+		// start := cputicks()
+		if list := netqget(pp); !list.empty() {
+			gp := list.pop()
+			injectglistTolocal(&list)
+			casgstatus(gp, _Gwaiting, _Grunnable)
+			if traceEnabled() {
+				traceGoUnpark(gp, 0)
+			}
+			// mp.netpoll_ticks += cputicks() - start
+			// mp.netpoll_count += 1
+			return gp, false, false
+		}
+
+		// if gp := netqgetone(pp); gp != nil {
+		// 	casgstatus(gp, _Gwaiting, _Grunnable)
+		// 	if traceEnabled() {
+		// 		traceGoUnpark(gp, 0)
+		// 	}
+		// 	mp.get_netq++
+		// 	return gp, false, false
+		// }
+	} else if netpoll_prioritized {
+		if netpollinited() && netpollWaiters.Load() > 0 && sched.lastpoll.Load() != 0 {
+			// start := cputicks()
+			if list := netpoll(0); !list.empty() { // non-blocking
+				gp := list.pop()
+				// println("net->injectglist")
+				injectglist(&list)
+				casgstatus(gp, _Gwaiting, _Grunnable)
+				if traceEnabled() {
+					traceGoUnpark(gp, 0)
+				}
+				// mp.netpoll_ticks += cputicks() - start
+				// mp.netpoll_count += 1
+				return gp, false, false
+			}
+			// mp.netpoll_empty_ticks += cputicks() - start
+			// mp.netpoll_empty_count += 1
+		}
+	}
+
 	// global runq
 	if sched.runqsize != 0 {
 		lock(&sched.lock)
 		gp := globrunqget(pp, 0)
 		unlock(&sched.lock)
 		if gp != nil {
+			mp.get_global++
 			return gp, false, false
 		}
 	}
@@ -3003,17 +3095,27 @@ top:
 	// blocked thread (e.g. it has already returned from netpoll, but does
 	// not set lastpoll yet), this thread will do blocking netpoll below
 	// anyway.
-	if netpollinited() && netpollWaiters.Load() > 0 && sched.lastpoll.Load() != 0 {
-		if list := netpoll(0); !list.empty() { // non-blocking
-			gp := list.pop()
-			injectglist(&list)
-			casgstatus(gp, _Gwaiting, _Grunnable)
-			if traceEnabled() {
-				traceGoUnpark(gp, 0)
+	if !dedicated_netcore_enabled && !netpoll_prioritized {
+		// if globalschedtick%config_q != 0 {
+		if netpollinited() && netpollWaiters.Load() > 0 && sched.lastpoll.Load() != 0 {
+			// start := cputicks()
+			if list := netpoll(0); !list.empty() { // non-blocking
+				gp := list.pop()
+				// println("net->injectglist")
+				injectglist(&list)
+				casgstatus(gp, _Gwaiting, _Grunnable)
+				if traceEnabled() {
+					traceGoUnpark(gp, 0)
+				}
+				// mp.netpoll_ticks += cputicks() - start
+				// mp.netpoll_count += 1
+				return gp, false, false
 			}
-			return gp, false, false
+			// mp.netpoll_empty_ticks += cputicks() - start
+			// mp.netpoll_empty_count += 1
 		}
 	}
+	// }
 
 	// Spinning Ms: steal work from other Ps.
 	//
@@ -3218,6 +3320,7 @@ top:
 			delay = 0
 		}
 		list := netpoll(delay) // block until new work is available
+		// mp.netpoll_count2 += 1
 		// Refresh now again, after potentially blocking.
 		now = nanotime()
 		sched.pollUntil.Store(0)
@@ -3548,9 +3651,12 @@ func injectglist(glist *gList) {
 		}
 	}
 
+	getg().m.injectg_count += 1
+
 	pp := getg().m.p.ptr()
 	if pp == nil {
 		lock(&sched.lock)
+		getg().m.injectg_global1 += int32(qsize)
 		globrunqputbatch(&q, int32(qsize))
 		unlock(&sched.lock)
 		startIdle(qsize)
@@ -3566,6 +3672,7 @@ func injectglist(glist *gList) {
 	}
 	if n > 0 {
 		lock(&sched.lock)
+		getg().m.injectg_global2 += int32(n)
 		globrunqputbatch(&globq, int32(n))
 		unlock(&sched.lock)
 		startIdle(n)
@@ -3573,7 +3680,166 @@ func injectglist(glist *gList) {
 	}
 
 	if !q.empty() {
+		getg().m.injectg_local += int32(qsize)
 		runqputbatch(pp, &q, qsize)
+	}
+}
+
+func injectglistTolocal(glist *gList) {
+	if glist.empty() {
+		return
+	}
+	if traceEnabled() {
+		for gp := glist.head.ptr(); gp != nil; gp = gp.schedlink.ptr() {
+			traceGoUnpark(gp, 0)
+		}
+	}
+
+	head := glist.head.ptr()
+	var tail *g
+	qsize := 0
+	for gp := head; gp != nil; gp = gp.schedlink.ptr() {
+		tail = gp
+		qsize++
+		casgstatus(gp, _Gwaiting, _Grunnable)
+	}
+
+	// Turn the gList into a gQueue.
+	var q gQueue
+	q.head.set(head)
+	q.tail.set(tail)
+	*glist = gList{}
+
+	startIdle := func(n int) {
+		for i := 0; i < n; i++ {
+			mp := acquirem() // See comment in startm.
+			lock(&sched.lock)
+
+			pp, _ := pidlegetSpinning(0)
+			if pp == nil {
+				unlock(&sched.lock)
+				releasem(mp)
+				break
+			}
+
+			startm(pp, false, true)
+			unlock(&sched.lock)
+			releasem(mp)
+		}
+	}
+
+	getg().m.injectg_count += 1
+
+	pp := getg().m.p.ptr()
+	if pp == nil {
+		lock(&sched.lock)
+		getg().m.injectg_global1 += int32(qsize)
+		globrunqputbatch(&q, int32(qsize))
+		unlock(&sched.lock)
+		startIdle(qsize)
+		return
+	}
+
+	getg().m.injectg_local += int32(qsize)
+	runqputbatch(pp, &q, qsize)
+}
+
+var injectRR int64 = 0
+
+func injectglistTonetq(glist *gList) {
+	if glist.empty() {
+		return
+	}
+
+	// Mark all the goroutines as runnable before we put them
+	// on the run queues.
+	head := glist.head.ptr()
+	var tail *g
+	qsize := 0
+	for gp := head; gp != nil; gp = gp.schedlink.ptr() {
+		tail = gp
+		qsize++
+	}
+
+	// Turn the gList into a gQueue.
+	var q gQueue
+	q.head.set(head)
+	q.tail.set(tail)
+	*glist = gList{}
+
+	startIdle := func(n int) {
+		for i := 0; i < n; i++ {
+			// println("in2 getg:", getg().goid)
+			mp := acquirem() // See comment in startm.
+			// println("in2:", mp, mp.procid)
+			lock(&sched.lock)
+
+			pp, _ := pidlegetSpinning(0)
+			if pp == nil {
+				unlock(&sched.lock)
+				releasem(mp)
+				break
+			}
+
+			startm(pp, false, true)
+			unlock(&sched.lock)
+			releasem(mp)
+		}
+	}
+
+	npidle := int(sched.npidle.Load())
+	var globq gQueue
+	var n int
+	for n = 0; n < npidle && !q.empty(); n++ {
+		g := q.pop()
+		if traceEnabled() {
+			traceGoUnpark(g, 0)
+		}
+		casgstatus(g, _Gwaiting, _Grunnable)
+		globq.pushBack(g)
+	}
+
+	dedicated_netpoll_count += 1
+
+	if n > 0 {
+		lock(&sched.lock)
+		dedicated_netpoll_global += int32(n)
+		globrunqputbatch(&globq, int32(n))
+		unlock(&sched.lock)
+		startIdle(n)
+		qsize -= n
+	}
+
+	if !q.empty() {
+		var pp *p
+
+		for {
+			pp = allp[injectRR%int64(len(allp))]
+			if pp.status == _Prunning && pp.m != 0 { // && !pp.m.ptr().spinning {
+				break
+			}
+			injectRR++
+		}
+
+		dedicated_netpoll_local += int32(qsize)
+		netqput(pp, &q, qsize)
+		injectRR++
+	}
+}
+
+func dedicatednetpoller() {
+	for {
+		if netpollinited() { // && netpollWaiters.Load() > 0 && sched.lastpoll.Load() != 0 {
+			// start := cputicks()
+			if list := netpoll(0); !list.empty() { // non-blocking
+
+				injectglistTonetq(&list)
+				// mp.netpoll_ticks += cputicks() - start
+				// mp.netpoll_count += 1
+			}
+			// mp.netpoll_empty_ticks += cputicks() - start
+			// mp.netpoll_empty_count += 1
+		}
 	}
 }
 
@@ -3780,10 +4046,12 @@ func goschedImpl(gp *g) {
 		dumpgstatus(gp)
 		throw("bad g status")
 	}
+	// pp := gp.m.p.ptr()
 	casgstatus(gp, _Grunning, _Grunnable)
 	dropg()
 	lock(&sched.lock)
 	globrunqput(gp)
+	// runqput(pp, gp, false)
 	unlock(&sched.lock)
 
 	schedule()
@@ -4025,6 +4293,7 @@ func reentersyscall(pc, sp uintptr) {
 	// Disable preemption because during this function g is in Gsyscall status,
 	// but can have inconsistent g->sched, do not let GC observe it.
 	gp.m.locks++
+	// println("entersyscall m:", gp.m.id)
 
 	// Entersyscall must not call any function that might split/grow the stack.
 	// (See details in comment above.)
@@ -5628,7 +5897,12 @@ func sysmon() {
 		}
 		// poll network if not polled for more than 10ms
 		lastpoll := sched.lastpoll.Load()
-		if netpollinited() && lastpoll != 0 && lastpoll+10*1000*1000 < now {
+
+		netpollNS := int64(10 * 1000 * 1000)
+		if sysmon_freq_netpoll_enabled {
+			netpollNS = forcePreemptNS
+		}
+		if netpollinited() && lastpoll != 0 && lastpoll+netpollNS < now {
 			sched.lastpoll.CompareAndSwap(lastpoll, now)
 			list := netpoll(0) // non-blocking - returns list of goroutines
 			if !list.empty() {
@@ -5640,7 +5914,11 @@ func sysmon() {
 				// observes that there is no work to do and no other running M's
 				// and reports deadlock.
 				incidlelocked(-1)
-				injectglist(&list)
+				if sysmon_localrunq_enabled {
+					injectglistTonetq(&list)
+				} else {
+					injectglist(&list)
+				}
 				incidlelocked(1)
 			}
 		}
@@ -5706,17 +5984,17 @@ func sysmon() {
 }
 
 type sysmontick struct {
-	schedtick   uint32
-	schedwhen   int64
-	syscalltick uint32
-	syscallwhen int64
-	last_preempt  int64
+	schedtick    uint32
+	schedwhen    int64
+	syscalltick  uint32
+	syscallwhen  int64
+	last_preempt int64
 }
 
 // forcePreemptNS is the time slice given to a G before it is
 // preempted.
 var forcePreemptNS int64 = 10 * 1000 * 1000 // 10ms
-var forcePreemptUS uint32 = 10 * 1000 // 10ms
+var forcePreemptUS uint32 = 10 * 1000       // 10ms
 
 func retake(now int64) uint32 {
 	n := 0
@@ -6216,6 +6494,49 @@ func pidlegetSpinning(now int64) (*p, int64) {
 	}
 
 	return pp, now
+}
+
+func netqget(pp *p) gList {
+	var toRun gList
+	h := atomic.LoadAcq(&pp.netqhead) // load-acquire, synchronize with other consumers
+	t := pp.netqtail
+	for i := h; i < t; i++ {
+		gp := pp.netq[i%uint32(len(pp.netq))].ptr()
+		// println("netqget pp:", pp, "h:", "t:", t, "len:", len(pp.netq), "i:", i%uint32(len(pp.netq)), "gp:", gp, "atomicstatus:", gp.atomicstatus.Load())
+		toRun.push(gp)
+	}
+	if h != t {
+		atomic.StoreRel(&pp.netqhead, t)
+	}
+	return toRun
+}
+
+func netqgetone(pp *p) *g {
+	h := atomic.LoadAcq(&pp.netqhead) // load-acquire, synchronize with other consumers
+	t := pp.netqtail
+	if h != t {
+		gp := pp.netq[h%uint32(len(pp.netq))].ptr()
+		atomic.StoreRel(&pp.netqhead, h+1)
+		return gp
+	} else {
+		return nil
+	}
+}
+
+func netqput(pp *p, q *gQueue, qsize int) {
+	h := atomic.LoadAcq(&pp.netqhead)
+	t := pp.netqtail
+	for !q.empty() && t-h < uint32(len(pp.netq)) {
+		gp := q.pop()
+		// println("netqput pp:", pp, "h:", h, "t:", t, "i:", t%uint32(len(pp.netq)), "len:", len(pp.netq), "gp:", gp, "atomicstatus:", gp.atomicstatus.Load())
+		pp.netq[t%uint32(len(pp.netq))].set(gp)
+		t++
+	}
+
+	atomic.StoreRel(&pp.netqtail, t)
+	if !q.empty() {
+		throw("the netq is full")
+	}
 }
 
 // runqempty reports whether pp has no Gs on its local run queue.
