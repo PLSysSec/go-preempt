@@ -5900,7 +5900,7 @@ func sysmon() {
 
 		netpollNS := int64(10 * 1000 * 1000)
 		if sysmon_freq_netpoll_enabled {
-			netpollNS = forcePreemptNS
+			netpollNS = int64(100 * 1000)
 		}
 		if netpollinited() && lastpoll != 0 && lastpoll+netpollNS < now {
 			sched.lastpoll.CompareAndSwap(lastpoll, now)
