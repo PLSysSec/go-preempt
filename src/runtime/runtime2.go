@@ -626,9 +626,15 @@ type m struct {
 	injectg_global2     int32
 	injectg_local       int32
 
-	get_netq   int32
-	get_local  int32
-	get_global int32
+	// get_netq    int32
+	// ready_local int32
+	// get_local   int32
+	// get_local2  int32
+	// get_global  int32
+
+	// exitsyscall_all  int32
+	// exitsyscall_fast int32
+	// exitsyscall_slow int32
 
 	dlogPerM
 
@@ -662,9 +668,7 @@ type p struct {
 	runqhead uint32
 	runqtail uint32
 	runq     [256]guintptr
-	netqhead uint32
-	netqtail uint32
-	netq     [256]guintptr
+
 	// runnext, if non-nil, is a runnable G that was ready'd by
 	// the current G and should be run next instead of what's in
 	// runq if there's time remaining in the running G's time
@@ -678,6 +682,13 @@ type p struct {
 	// Note that while other P's may atomically CAS this to zero,
 	// only the owner P can CAS it to a valid G.
 	runnext guintptr
+
+	// runq2head uint32
+	// runq2tail uint32
+	// runq2     [128]guintptr
+	netqhead uint32
+	netqtail uint32
+	netq     [128]guintptr
 
 	// Available G's (status == Gdead)
 	gFree struct {

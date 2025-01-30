@@ -144,6 +144,16 @@ var dedicated_netpoll_count int32
 var dedicated_netpoll_global int32
 var dedicated_netpoll_local int32
 
+var SyscallIO, InterruptedIO int32
+var SyscallReadCount, SyscallReadSuccess int32
+var SyscallReadData int64
+var SyscallFailTime, SyscallSuccessTime int64
+var EpollRead int32
+
+func Runtimecputicks() int64 {
+	return cputicks()
+}
+
 // The main goroutine.
 func main() {
 	mp := getg().m
@@ -330,7 +340,7 @@ func main() {
 			// 	println("empty netpoll ticks:", mp.netpoll_empty_ticks, "count:", mp.netpoll_empty_count, "ticks/count:", mp.netpoll_empty_ticks/int64(mp.netpoll_empty_count))
 			// }
 			// println("netpoll2 count:", mp.netpoll_count2)
-			println("injectg count:", mp.injectg_count, "global1:", mp.injectg_global1, "global2:", mp.injectg_global2, "local:", mp.injectg_local)
+			println("runtime netpoll count:", mp.injectg_count, "global1:", mp.injectg_global1, "global2:", mp.injectg_global2, "local:", mp.injectg_local)
 			// if mp.injectg_count != 0 {
 			// 	println("(per) inject global1:", mp.injectg_global1/mp.injectg_count, "global2:", mp.injectg_global2/mp.injectg_count, "local:", mp.injectg_local/mp.injectg_count)
 			// }
@@ -339,13 +349,32 @@ func main() {
 			total_injectg_global2 += mp.injectg_global2
 			total_injectg_local += mp.injectg_local
 		}
-		println("+++ total injectg count:", total_injectg_count, "global1:", total_injectg_global1, "gloabl2:", total_injectg_global2, "local:", total_injectg_local, "all:", total_injectg_global1+total_injectg_global2+total_injectg_local)
-		println("+++ dedicated netpoll count:", dedicated_netpoll_count, "global:", dedicated_netpoll_global, "local:", dedicated_netpoll_local)
 		println("total preemptgen:", preempt_gen_sum)
 
-		for mp := allm; mp != nil; mp = mp.alllink {
-			println("get netq:", mp.get_netq, "local:", mp.get_local, "global:", mp.get_global)
-		}
+		println("+++ runtime netpoll count:", total_injectg_count, "global1:", total_injectg_global1, "gloabl2:", total_injectg_global2, "local:", total_injectg_local, "all:", total_injectg_global1+total_injectg_global2+total_injectg_local)
+		println("+++ dedicated netpoll count:", dedicated_netpoll_count, "global:", dedicated_netpoll_global, "local:", dedicated_netpoll_local, "all:", dedicated_netpoll_global+dedicated_netpoll_local)
+		println("+++ runtime+dedicated netpoll:", total_injectg_global1+total_injectg_global2+total_injectg_local+dedicated_netpoll_global+dedicated_netpoll_local)
+
+		// for mp := allm; mp != nil; mp = mp.alllink {
+		// 	println("get netq:", mp.get_netq, "local:", mp.get_local, "local2:", mp.get_local2, "global:", mp.get_global, "ready_local:", mp.ready_local)
+		// }
+
+		// println("SyscallIO:", SyscallIO, "InterruptedIO:", InterruptedIO)
+
+		// var slow_total int32 = 0
+		// for mp := allm; mp != nil; mp = mp.alllink {
+		// 	println("exitsyscall:", mp.exitsyscall_all, "fast:", mp.exitsyscall_fast, "slow:", mp.exitsyscall_slow)
+		// 	slow_total += mp.exitsyscall_slow
+		// }
+		// println("total of slow:", slow_total)
+
+		println("+++ exitsyscall oldp:", exitsyscall_oldp, "newp:", exitsyscall_newp, "glob:", exitsyscall_glob, "all:", exitsyscall_oldp+exitsyscall_newp+exitsyscall_glob)
+
+		println("+++ read:", SyscallReadCount, "syscall:", SyscallReadSuccess, "epoll:", EpollRead, "epoll percent:", EpollRead*100/SyscallReadCount)
+
+		// println("Try", SyscallReadCount, "Read syscalls:", SyscallReadSuccess, "syscalls get", SyscallReadData, " bytes data successfully;")
+		// println("Time for failed syscalls:", SyscallFailTime, "for successful syscalls:", SyscallSuccessTime, "avg time:", SyscallSuccessTime/int64(SyscallReadSuccess))
+		// println("Try", EpollRead, "Read epolls.")
 	}
 
 	exit(0)
@@ -386,6 +415,18 @@ func forcegchelper() {
 		}
 		// Time-triggered, fully concurrent.
 		gcStart(gcTrigger{kind: gcTriggerTime, now: nanotime()})
+	}
+}
+
+func DisablePreemption() {
+	if sysmon_freq_netpoll_enabled {
+		getg().m.preemptoff = "lock"
+	}
+}
+
+func ReEnablePreemption() {
+	if sysmon_freq_netpoll_enabled {
+		getg().m.preemptoff = ""
 	}
 }
 
@@ -981,6 +1022,7 @@ func ready(gp *g, traceskip int, next bool) {
 
 	// status is Gwaiting or Gscanwaiting, make Grunnable and put on runq
 	casgstatus(gp, _Gwaiting, _Grunnable)
+	// mp.ready_local++
 	runqput(mp.p.ptr(), gp, next)
 	wakep()
 	releasem(mp)
@@ -3032,12 +3074,18 @@ top:
 
 	// local runq
 	if gp, inheritTime := runqget(pp); gp != nil {
+		// mp.get_local++
 		return gp, inheritTime, false
 	}
 
+	// if gp := runq2get(pp); gp != nil {
+	// 	mp.get_local2++
+	// 	return gp, false, false
+	// }
+
 	if dedicated_netcore_enabled || sysmon_localrunq_enabled {
 		// start := cputicks()
-		if list := netqget(pp); !list.empty() {
+		if list := netqdrain(pp); !list.empty() {
 			gp := list.pop()
 			injectglistTolocal(&list)
 			casgstatus(gp, _Gwaiting, _Grunnable)
@@ -3046,10 +3094,11 @@ top:
 			}
 			// mp.netpoll_ticks += cputicks() - start
 			// mp.netpoll_count += 1
+			// mp.get_netq++
 			return gp, false, false
 		}
 
-		// if gp := netqgetone(pp); gp != nil {
+		// if gp := netqget(pp); gp != nil {
 		// 	casgstatus(gp, _Gwaiting, _Grunnable)
 		// 	if traceEnabled() {
 		// 		traceGoUnpark(gp, 0)
@@ -3077,13 +3126,18 @@ top:
 		}
 	}
 
+	// if gp := runq2get(pp); gp != nil {
+	// 	mp.get_local2++
+	// 	return gp, false, false
+	// }
+
 	// global runq
 	if sched.runqsize != 0 {
 		lock(&sched.lock)
 		gp := globrunqget(pp, 0)
 		unlock(&sched.lock)
 		if gp != nil {
-			mp.get_global++
+			// mp.get_global++
 			return gp, false, false
 		}
 	}
@@ -3296,6 +3350,7 @@ top:
 		pollUntil = checkTimersNoP(allpSnapshot, timerpMaskSnapshot, pollUntil)
 	}
 
+	// println("try net again2")
 	// Poll network until next timer.
 	if netpollinited() && (netpollWaiters.Load() > 0 || pollUntil != 0) && sched.lastpoll.Swap(0) != 0 {
 		sched.pollUntil.Store(pollUntil)
@@ -3728,19 +3783,19 @@ func injectglistTolocal(glist *gList) {
 		}
 	}
 
-	getg().m.injectg_count += 1
+	// getg().m.injectg_count += 1
 
 	pp := getg().m.p.ptr()
 	if pp == nil {
 		lock(&sched.lock)
-		getg().m.injectg_global1 += int32(qsize)
+		// getg().m.injectg_global1 += int32(qsize)
 		globrunqputbatch(&q, int32(qsize))
 		unlock(&sched.lock)
 		startIdle(qsize)
 		return
 	}
 
-	getg().m.injectg_local += int32(qsize)
+	// getg().m.injectg_local += int32(qsize)
 	runqputbatch(pp, &q, qsize)
 }
 
@@ -3822,7 +3877,7 @@ func injectglistTonetq(glist *gList) {
 		}
 
 		dedicated_netpoll_local += int32(qsize)
-		netqput(pp, &q, qsize)
+		netqputbatch(pp, &q, qsize)
 		injectRR++
 	}
 }
@@ -4051,6 +4106,7 @@ func goschedImpl(gp *g) {
 	dropg()
 	lock(&sched.lock)
 	globrunqput(gp)
+	// runq2put(pp, gp)
 	// runqput(pp, gp, false)
 	unlock(&sched.lock)
 
@@ -4464,6 +4520,7 @@ func exitsyscall() {
 	oldp := gp.m.oldp.ptr()
 	gp.m.oldp = 0
 	if exitsyscallfast(oldp) {
+		exitsyscall_oldp++
 		// When exitsyscallfast returns success, we have a P so can now use
 		// write barriers
 		if goroutineProfile.active {
@@ -4612,6 +4669,8 @@ func exitsyscallfast_pidle() bool {
 	return false
 }
 
+var exitsyscall_oldp, exitsyscall_newp, exitsyscall_glob int32
+
 // exitsyscall slow path on g0.
 // Failed to acquire P, enqueue gp as runnable.
 //
@@ -4628,6 +4687,7 @@ func exitsyscall0(gp *g) {
 	}
 	var locked bool
 	if pp == nil {
+		exitsyscall_glob++
 		globrunqput(gp)
 
 		// Below, we stoplockedm if gp is locked. globrunqput releases
@@ -4636,9 +4696,12 @@ func exitsyscall0(gp *g) {
 		// could race with another M transitioning gp from unlocked to
 		// locked.
 		locked = gp.lockedm != 0
-	} else if sched.sysmonwait.Load() {
-		sched.sysmonwait.Store(false)
-		notewakeup(&sched.sysmonnote)
+	} else {
+		exitsyscall_newp++
+		if sched.sysmonwait.Load() {
+			sched.sysmonwait.Store(false)
+			notewakeup(&sched.sysmonnote)
+		}
 	}
 	unlock(&sched.lock)
 	if pp != nil {
@@ -5900,7 +5963,8 @@ func sysmon() {
 
 		netpollNS := int64(10 * 1000 * 1000)
 		if sysmon_freq_netpoll_enabled {
-			netpollNS = forcePreemptNS
+			// netpollNS = forcePreemptNS
+			netpollNS = int64(100 * 1000)
 		}
 		if netpollinited() && lastpoll != 0 && lastpoll+netpollNS < now {
 			sched.lastpoll.CompareAndSwap(lastpoll, now)
@@ -6496,13 +6560,14 @@ func pidlegetSpinning(now int64) (*p, int64) {
 	return pp, now
 }
 
-func netqget(pp *p) gList {
+// Executed only by sysmon or the dedicated netpoller
+func netqdrain(pp *p) gList {
 	var toRun gList
 	h := atomic.LoadAcq(&pp.netqhead) // load-acquire, synchronize with other consumers
 	t := pp.netqtail
 	for i := h; i < t; i++ {
 		gp := pp.netq[i%uint32(len(pp.netq))].ptr()
-		// println("netqget pp:", pp, "h:", "t:", t, "len:", len(pp.netq), "i:", i%uint32(len(pp.netq)), "gp:", gp, "atomicstatus:", gp.atomicstatus.Load())
+		// println("netqdrain pp:", pp, "h:", "t:", t, "len:", len(pp.netq), "i:", i%uint32(len(pp.netq)), "gp:", gp, "atomicstatus:", gp.atomicstatus.Load())
 		toRun.push(gp)
 	}
 	if h != t {
@@ -6511,7 +6576,8 @@ func netqget(pp *p) gList {
 	return toRun
 }
 
-func netqgetone(pp *p) *g {
+// Executed only by sysmon or the dedicated netpoller
+func netqget(pp *p) *g {
 	h := atomic.LoadAcq(&pp.netqhead) // load-acquire, synchronize with other consumers
 	t := pp.netqtail
 	if h != t {
@@ -6523,7 +6589,8 @@ func netqgetone(pp *p) *g {
 	}
 }
 
-func netqput(pp *p, q *gQueue, qsize int) {
+// Executed only by sysmon or the dedicated netpoller
+func netqputbatch(pp *p, q *gQueue, qsize int) {
 	h := atomic.LoadAcq(&pp.netqhead)
 	t := pp.netqtail
 	for !q.empty() && t-h < uint32(len(pp.netq)) {
@@ -6538,6 +6605,38 @@ func netqput(pp *p, q *gQueue, qsize int) {
 		throw("the netq is full")
 	}
 }
+
+// // Executed only by the owner P.
+// func runq2get(pp *p) *g {
+// 	h := atomic.LoadAcq(&pp.runq2head) // load-acquire, synchronize with other consumers
+// 	t := pp.runq2tail
+// 	println("get h:", h, "t:", t, "runq2:", &pp.runq2)
+// 	if h != t {
+// 		gp := pp.runq2[h%uint32(len(pp.runq2))].ptr()
+// 		atomic.StoreRel(&pp.runq2head, h+1)
+// 		println("get:", gp)
+// 		return gp
+// 	} else {
+// 		return nil
+// 	}
+// }
+
+// // Executed only by the owner P.
+// func runq2put(pp *p, gp *g) {
+// 	h := atomic.LoadAcq(&pp.runq2head)
+// 	t := pp.runq2tail
+// 	println("put h:", h, "t:", t, "gp:", gp, "runq2:", &pp.runq2)
+// 	if t-h < uint32(len(pp.runq2)) {
+// 		pp.runq2[t%uint32(len(pp.runq2))].set(gp)
+// 		atomic.StoreRel(&pp.runq2tail, t+1) // store-release, makes the item available for consumption
+// 		return
+// 	}
+
+// 	println("caution !!!!!!!!")
+// 	lock(&sched.lock)
+// 	globrunqput(gp)
+// 	unlock(&sched.lock)
+// }
 
 // runqempty reports whether pp has no Gs on its local run queue.
 // It never returns true spuriously.

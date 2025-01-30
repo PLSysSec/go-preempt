@@ -9,6 +9,7 @@ package poll
 import (
 	"internal/syscall/unix"
 	"io"
+	"runtime"
 	"sync/atomic"
 	"syscall"
 )
@@ -157,14 +158,23 @@ func (fd *FD) Read(p []byte) (int, error) {
 		p = p[:maxRW]
 	}
 	for {
+		runtime.SyscallReadCount++
+		// start := runtime.Runtimecputicks()
 		n, err := ignoringEINTRIO(syscall.Read, fd.Sysfd, p)
+		// end := runtime.Runtimecputicks()
 		if err != nil {
 			n = 0
+			runtime.EpollRead++
+			// runtime.SyscallFailTime += end - start
 			if err == syscall.EAGAIN && fd.pd.pollable() {
 				if err = fd.pd.waitRead(fd.isFile); err == nil {
 					continue
 				}
 			}
+		} else {
+			runtime.SyscallReadSuccess++
+			// runtime.SyscallReadData += int64(n)
+			// runtime.SyscallSuccessTime += end - start
 		}
 		err = fd.eofError(n, err)
 		return n, err
@@ -732,10 +742,12 @@ func (fd *FD) RawWrite(f func(uintptr) bool) error {
 
 // ignoringEINTRIO is like ignoringEINTR, but just for IO calls.
 func ignoringEINTRIO(fn func(fd int, p []byte) (int, error), fd int, p []byte) (int, error) {
+	// runtime.SyscallIO++
 	for {
 		n, err := fn(fd, p)
 		if err != syscall.EINTR {
 			return n, err
 		}
+		// runtime.InterruptedIO++
 	}
 }
