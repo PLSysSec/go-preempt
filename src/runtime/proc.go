@@ -298,16 +298,25 @@ func main() {
 			}
 			println("schedtick:", pp.schedtick)
 		}
+		var totalPreemptGen uint32
 		for mp := allm; mp != nil; mp = mp.alllink {
 			println("preemptgen:", mp.preemptGen.Load())
 			println("uipissent:", mp.uipissent)
+			totalPreemptGen += mp.preemptGen.Load() 
 		}
+		println("Total preemptgen:", totalPreemptGen)
 	}
 
 	exit(0)
 	for {
 		var x *int32
 		*x = 0
+	}
+}
+
+func GoResetPreemptGen() {
+	for mp := allm; mp != nil; mp = mp.alllink {
+		mp.preemptGen.Store(0); 
 	}
 }
 
