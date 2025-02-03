@@ -299,12 +299,20 @@ func main() {
 			println("schedtick:", pp.schedtick)
 		}
 		var totalPreemptGen uint32
+		var totalPreemptGenSync uint32
+		var totalUipissent int32
 		for mp := allm; mp != nil; mp = mp.alllink {
+			println("preemptgensync:", mp.preemptGenSync.Load())
 			println("preemptgen:", mp.preemptGen.Load())
 			println("uipissent:", mp.uipissent)
-			totalPreemptGen += mp.preemptGen.Load() 
+			totalPreemptGenSync += mp.preemptGenSync.Load()
+			totalPreemptGen += mp.preemptGen.Load()
+			totalUipissent += mp.uipissent
 		}
 		println("Total preemptgen:", totalPreemptGen)
+		println("Total uipissent:", totalUipissent)
+		println("Total synchronous preemptgen:", totalPreemptGenSync)
+		println("Total synchronous+asynchronous preemptgen:", totalPreemptGenSync+totalPreemptGen)
 	}
 
 	exit(0)
@@ -316,7 +324,9 @@ func main() {
 
 func GoResetPreemptGen() {
 	for mp := allm; mp != nil; mp = mp.alllink {
-		mp.preemptGen.Store(0); 
+		mp.uipissent = 0
+		mp.preemptGen.Store(0)
+		mp.preemptGenSync.Store(0)
 	}
 }
 
@@ -5715,17 +5725,17 @@ func sysmon() {
 }
 
 type sysmontick struct {
-	schedtick   uint32
-	schedwhen   int64
-	syscalltick uint32
-	syscallwhen int64
-	last_preempt  int64
+	schedtick    uint32
+	schedwhen    int64
+	syscalltick  uint32
+	syscallwhen  int64
+	last_preempt int64
 }
 
 // forcePreemptNS is the time slice given to a G before it is
 // preempted.
 var forcePreemptNS int64 = 10 * 1000 * 1000 // 10ms
-var forcePreemptUS uint32 = 10 * 1000 // 10ms
+var forcePreemptUS uint32 = 10 * 1000       // 10ms
 
 func retake(now int64) uint32 {
 	n := 0

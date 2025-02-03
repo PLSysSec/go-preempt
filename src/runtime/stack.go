@@ -1070,6 +1070,7 @@ func newstack() {
 			preemptPark(gp) // never returns
 		}
 
+		gp.m.preemptGenSync.Add(1)
 		// Act like goroutine called runtime.Gosched.
 		gopreempt_m(gp) // never return
 	}

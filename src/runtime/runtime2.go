@@ -604,16 +604,17 @@ type m struct {
 	// preemptGen counts the number of completed preemption
 	// signals. This is used to detect when a preemption is
 	// requested, but fails.
-	preemptGen atomic.Uint32
+	preemptGen     atomic.Uint32
+	preemptGenSync atomic.Uint32
 
 	// Whether this is a pending preemption signal on this M.
 	signalPending atomic.Uint32
 
 	// state for sending and receiving user interrupts
-	uintrfd      int32
-	senderregistered      bool
-	uipiindex    int32
-	uipissent    int32
+	uintrfd          int32
+	senderregistered bool
+	uipiindex        int32
+	uipissent        int32
 
 	dlogPerM
 

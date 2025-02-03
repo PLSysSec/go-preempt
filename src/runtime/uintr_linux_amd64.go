@@ -9,9 +9,9 @@ import (
 )
 
 type __uintr_frame struct {
-	rip uintptr
+	rip    uintptr
 	rflags uint64
-	rsp uintptr
+	rsp    uintptr
 }
 
 func minitUserInterrupts() {
@@ -28,7 +28,7 @@ func minitUserInterrupts() {
 	// Note: it seems that we have to specify a pointer to the top of the stack
 	// rather than the base of the stack as with sigaltstack.
 	s := &mp.gsignal.stack
-	ret = uintr_alt_stack(s.hi, uint64(s.hi - s.lo), 0)
+	ret = uintr_alt_stack(s.hi, uint64(s.hi-s.lo), 0)
 	if ret < 0 {
 		print("error registering alt stack for UIPI handler: ", ret, "\n")
 	}
