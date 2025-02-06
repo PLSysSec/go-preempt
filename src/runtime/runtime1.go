@@ -323,6 +323,7 @@ var debug struct {
 	schedtrace         int32
 	tracebackancestors int32
 	asyncpreemptoff    int32
+	syncpreemptoff     int32
 	harddecommit       int32
 	adaptivestackstart int32
 	tracefpunwindoff   int32
@@ -357,6 +358,7 @@ var dbgvars = []*dbgVar{
 	{name: "schedtrace", value: &debug.schedtrace},
 	{name: "tracebackancestors", value: &debug.tracebackancestors},
 	{name: "asyncpreemptoff", value: &debug.asyncpreemptoff},
+	{name: "syncpreemptoff", value: &debug.syncpreemptoff},
 	{name: "inittrace", value: &debug.inittrace},
 	{name: "harddecommit", value: &debug.harddecommit},
 	{name: "adaptivestackstart", value: &debug.adaptivestackstart},
@@ -579,7 +581,7 @@ func acquirem() *m {
 func releasem(mp *m) {
 	gp := getg()
 	mp.locks--
-	if mp.locks == 0 && gp.preempt {
+	if mp.locks == 0 && gp.preempt && debug.syncpreemptoff == 0 {
 		// restore the preemption request in case we've cleared it in newstack
 		gp.stackguard0 = stackPreempt
 	}

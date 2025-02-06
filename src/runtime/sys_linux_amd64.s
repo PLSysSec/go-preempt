@@ -796,3 +796,12 @@ TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 
 	ADJSP	$-8
 	UIRET
+
+// Called using C ABI.
+TEXT runtime·uintrtrampempty(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
+	// UINTR only saves IP, SP, and rflags so we need to save
+	// caller-saved registers here. The call to uintrtrampgo
+	// below will save callee-saved registers as needed.
+
+	ADJSP	$-8
+	UIRET

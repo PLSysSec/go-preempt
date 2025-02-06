@@ -614,7 +614,7 @@ type m struct {
 	uintrfd          int32
 	senderregistered bool
 	uipiindex        int32
-	uipissent        int32
+	preemptsent      int32
 
 	dlogPerM
 

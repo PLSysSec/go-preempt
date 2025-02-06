@@ -300,17 +300,17 @@ func main() {
 		}
 		var totalPreemptGen uint32
 		var totalPreemptGenSync uint32
-		var totalUipissent int32
+		var totalPreemptsent int32
 		for mp := allm; mp != nil; mp = mp.alllink {
 			println("preemptgensync:", mp.preemptGenSync.Load())
 			println("preemptgen:", mp.preemptGen.Load())
-			println("uipissent:", mp.uipissent)
+			println("preemptsent:", mp.preemptsent)
 			totalPreemptGenSync += mp.preemptGenSync.Load()
 			totalPreemptGen += mp.preemptGen.Load()
-			totalUipissent += mp.uipissent
+			totalPreemptsent += mp.preemptsent
 		}
-		println("Total preemptgen:", totalPreemptGen)
-		println("Total uipissent:", totalUipissent)
+		println("Total asynchronous preemptsent:", totalPreemptsent)
+		println("Total asynchronous preemptgen:", totalPreemptGen)
 		println("Total synchronous preemptgen:", totalPreemptGenSync)
 		println("Total synchronous+asynchronous preemptgen:", totalPreemptGenSync+totalPreemptGen)
 	}
@@ -324,7 +324,7 @@ func main() {
 
 func GoResetPreemptGen() {
 	for mp := allm; mp != nil; mp = mp.alllink {
-		mp.uipissent = 0
+		mp.preemptsent = 0
 		mp.preemptGen.Store(0)
 		mp.preemptGenSync.Store(0)
 	}
@@ -720,6 +720,7 @@ func getGodebugEarly() string {
 
 var uintr_enabled = false
 var preempt_info_enabled = false
+var preempt_measure_enabled = false
 
 // The bootstrap sequence is:
 //
@@ -802,6 +803,9 @@ func schedinit() {
 	if n, ok := atoi32(gogetenv("GOFORCEPREEMPTNS")); ok && n > 0 {
 		forcePreemptNS = int64(n)
 		forcePreemptUS = uint32(forcePreemptNS / 1000)
+	}
+	if n, ok := atoi32(gogetenv("PREEMPT_MEASURE")); ok && n == 1 {
+		preempt_measure_enabled = true
 	}
 	if n, ok := atoi32(gogetenv("PREEMPT_INFO")); ok && n == 1 {
 		preempt_info_enabled = true
@@ -5563,6 +5567,9 @@ var needSysmonWorkaround bool = false
 func sysmon() {
 	if preempt_info_enabled {
 		println("force preempt ns:", forcePreemptNS, ", us:", forcePreemptUS)
+		println("preempt_measure_enabled:", preempt_measure_enabled)
+		println("debug.asyncpreemptoff:", debug.asyncpreemptoff)
+		println("debug.syncpreemptoff:", debug.syncpreemptoff)
 	}
 
 	lock(&sched.lock)
@@ -5856,7 +5863,9 @@ func preemptone(pp *p) bool {
 	// comparing the current stack pointer to gp->stackguard0.
 	// Setting gp->stackguard0 to StackPreempt folds
 	// preemption into the normal stack overflow check.
-	gp.stackguard0 = stackPreempt
+	if debug.syncpreemptoff == 0 {
+		gp.stackguard0 = stackPreempt
+	}
 
 	// Request an async preemption of this P.
 	if preemptMSupported && debug.asyncpreemptoff == 0 {

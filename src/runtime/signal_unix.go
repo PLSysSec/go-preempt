@@ -372,7 +372,7 @@ func preemptM(mp *m) {
 		execLock.rlock()
 	}
 
-	if mp.signalPending.CompareAndSwap(0, 1) {
+	if preempt_measure_enabled || mp.signalPending.CompareAndSwap(0, 1) {
 		if GOOS == "darwin" || GOOS == "ios" {
 			pendingPreemptSignals.Add(1)
 		}
@@ -381,7 +381,7 @@ func preemptM(mp *m) {
 			if mp.senderregistered {
 				// Send a UIPI
 				senduipi(mp.uipiindex)
-				mp.uipissent++
+				mp.preemptsent++
 			} else {
 				mp.signalPending.Store(0)
 			}
@@ -392,6 +392,7 @@ func preemptM(mp *m) {
 			// live-lock problem. Apparently this could happen on darwin. See
 			// issue #37741.
 			// Only send a signal if there isn't already one pending.
+			mp.preemptsent++
 			signalM(mp, sigPreempt)
 		}
 	}
