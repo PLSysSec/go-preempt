@@ -799,9 +799,10 @@ TEXT runtime·uintrtramp(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
 
 // Called using C ABI.
 TEXT runtime·uintrtrampempty(SB),NOSPLIT|TOPFRAME|NOFRAME,$0
-	// UINTR only saves IP, SP, and rflags so we need to save
-	// caller-saved registers here. The call to uintrtrampgo
-	// below will save callee-saved registers as needed.
-
 	ADJSP	$-8
 	UIRET
+
+// Used instead of sigtramp in programs that use cgo.
+// Arguments from kernel are in DI, SI, DX.
+TEXT runtime·cgoSigtrampempty(SB),NOSPLIT,$0
+	RET

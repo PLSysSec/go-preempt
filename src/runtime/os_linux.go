@@ -436,6 +436,7 @@ func mdestroy(mp *m) {
 func sigreturn__sigaction()
 func sigtramp() // Called via C ABI
 func cgoSigtramp()
+func cgoSigtrampempty()
 
 //go:noescape
 func sigaltstack(new, old *stackt)
@@ -500,7 +501,11 @@ func setsig(i uint32, fn uintptr) {
 	}
 	if fn == abi.FuncPCABIInternal(sighandler) { // abi.FuncPCABIInternal(sighandler) matches the callers in signal_unix.go
 		if iscgo {
-			fn = abi.FuncPCABI0(cgoSigtramp)
+			if preempt_measure_enabled {
+				fn = abi.FuncPCABI0(cgoSigtrampempty)
+			} else {
+				fn = abi.FuncPCABI0(cgoSigtramp)
+			}
 		} else {
 			fn = abi.FuncPCABI0(sigtramp)
 		}
