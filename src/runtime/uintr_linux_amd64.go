@@ -9,16 +9,22 @@ import (
 )
 
 type __uintr_frame struct {
-	rip uintptr
+	rip    uintptr
 	rflags uint64
-	rsp uintptr
+	rsp    uintptr
 }
 
 func minitUserInterrupts() {
 	mp := getg().m
 
-	fn := abi.FuncPCABI0(uintrtramp)
-	ret := uintr_register_handler(fn, 0)
+	var ret int32
+	if preempt_measure_enabled {
+		fn := abi.FuncPCABI0(uintrtrampempty)
+		ret = uintr_register_handler(fn, 0)
+	} else {
+		fn := abi.FuncPCABI0(uintrtramp)
+		ret = uintr_register_handler(fn, 0)
+	}
 	if ret < 0 {
 		print("error registering UIPI handler: ", ret, "\n")
 	}
@@ -28,7 +34,7 @@ func minitUserInterrupts() {
 	// Note: it seems that we have to specify a pointer to the top of the stack
 	// rather than the base of the stack as with sigaltstack.
 	s := &mp.gsignal.stack
-	ret = uintr_alt_stack(s.hi, uint64(s.hi - s.lo), 0)
+	ret = uintr_alt_stack(s.hi, uint64(s.hi-s.lo), 0)
 	if ret < 0 {
 		print("error registering alt stack for UIPI handler: ", ret, "\n")
 	}
@@ -62,6 +68,15 @@ func uintrtrampgo(frame *__uintr_frame, vector int32) {
 	uintrhandler(gp, frame)
 
 	setg(gp)
+}
+
+//go:nosplit
+//go:nowritebarrierrec
+func uintrtrampgoempty(frame *__uintr_frame, vector int32) {
+	// print("uintrtrampgoempty")
+	gp := getg()
+	gp.m.preemptGen.Add(1)
+	gp.m.signalPending.Store(0)
 }
 
 // uintrhandler is invoked when a UIPI occurs. The global g will be

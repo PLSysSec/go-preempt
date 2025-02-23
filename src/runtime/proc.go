@@ -318,17 +318,12 @@ func main() {
 			println("schedtick:", pp.schedtick)
 		}
 
-		preempt_gen_sum := uint32(0)
-
 		var total_injectg_global1 int32
 		var total_injectg_global2 int32
 		var total_injectg_local int32
 		var total_injectg_count int32
 
 		for mp := allm; mp != nil; mp = mp.alllink {
-			preempt_gen_sum += mp.preemptGen.Load()
-			println("preemptgen:", mp.preemptGen.Load())
-			println("uipissent:", mp.uipissent)
 			// if mp.netpoll_count == 0 {
 			// 	println("netpoll ticks:", mp.netpoll_ticks, "count:", mp.netpoll_count)
 			// } else {
@@ -349,7 +344,6 @@ func main() {
 			total_injectg_global2 += mp.injectg_global2
 			total_injectg_local += mp.injectg_local
 		}
-		println("total preemptgen:", preempt_gen_sum)
 
 		println("+++ runtime netpoll count:", total_injectg_count, "global1:", total_injectg_global1, "gloabl2:", total_injectg_global2, "local:", total_injectg_local, "all:", total_injectg_global1+total_injectg_global2+total_injectg_local)
 		println("+++ dedicated netpoll count:", dedicated_netpoll_count, "global:", dedicated_netpoll_global, "local:", dedicated_netpoll_local, "all:", dedicated_netpoll_global+dedicated_netpoll_local)
@@ -368,19 +362,43 @@ func main() {
 		// }
 		// println("total of slow:", slow_total)
 
-		println("+++ exitsyscall oldp:", exitsyscall_oldp, "newp:", exitsyscall_newp, "glob:", exitsyscall_glob, "all:", exitsyscall_oldp+exitsyscall_newp+exitsyscall_glob)
+		// println("+++ exitsyscall oldp:", exitsyscall_oldp, "newp:", exitsyscall_newp, "glob:", exitsyscall_glob, "all:", exitsyscall_oldp+exitsyscall_newp+exitsyscall_glob)
 
-		println("+++ read:", SyscallReadCount, "syscall:", SyscallReadSuccess, "epoll:", EpollRead, "epoll percent:", EpollRead*100/SyscallReadCount)
+		// println("+++ read:", SyscallReadCount, "syscall:", SyscallReadSuccess, "epoll:", EpollRead, "epoll percent:", EpollRead*100/SyscallReadCount)
 
 		// println("Try", SyscallReadCount, "Read syscalls:", SyscallReadSuccess, "syscalls get", SyscallReadData, " bytes data successfully;")
 		// println("Time for failed syscalls:", SyscallFailTime, "for successful syscalls:", SyscallSuccessTime, "avg time:", SyscallSuccessTime/int64(SyscallReadSuccess))
 		// println("Try", EpollRead, "Read epolls.")
+
+		var totalPreemptGen uint32
+		var totalPreemptGenSync uint32
+		var totalPreemptsent int32
+		for mp := allm; mp != nil; mp = mp.alllink {
+			println("preemptgensync:", mp.preemptGenSync.Load())
+			println("preemptgen:", mp.preemptGen.Load())
+			println("preemptsent:", mp.preemptsent)
+			totalPreemptGenSync += mp.preemptGenSync.Load()
+			totalPreemptGen += mp.preemptGen.Load()
+			totalPreemptsent += mp.preemptsent
+		}
+		println("Total asynchronous preemptsent:", totalPreemptsent)
+		println("Total asynchronous preemptgen:", totalPreemptGen)
+		println("Total synchronous preemptgen:", totalPreemptGenSync)
+		println("Total synchronous+asynchronous preemptgen:", totalPreemptGenSync+totalPreemptGen)
 	}
 
 	exit(0)
 	for {
 		var x *int32
 		*x = 0
+	}
+}
+
+func GoResetPreemptGen() {
+	for mp := allm; mp != nil; mp = mp.alllink {
+		mp.preemptsent = 0
+		mp.preemptGen.Store(0)
+		mp.preemptGenSync.Store(0)
 	}
 }
 
@@ -786,6 +804,7 @@ func getGodebugEarly() string {
 
 var uintr_enabled = false
 var preempt_info_enabled = false
+var preempt_measure_enabled = false
 
 var sysmon_freq_netpoll_enabled = true
 var sysmon_localrunq_enabled = false
@@ -873,6 +892,9 @@ func schedinit() {
 	if n, ok := atoi32(gogetenv("GOFORCEPREEMPTNS")); ok && n > 0 {
 		forcePreemptNS = int64(n)
 		forcePreemptUS = uint32(forcePreemptNS / 1000)
+	}
+	if n, ok := atoi32(gogetenv("PREEMPT_MEASURE")); ok && n == 1 {
+		preempt_measure_enabled = true
 	}
 	if n, ok := atoi32(gogetenv("PREEMPT_INFO")); ok && n == 1 {
 		preempt_info_enabled = true
@@ -5876,6 +5898,9 @@ var needSysmonWorkaround bool = false
 func sysmon() {
 	if preempt_info_enabled {
 		println("force preempt ns:", forcePreemptNS, ", us:", forcePreemptUS)
+		println("preempt_measure_enabled:", preempt_measure_enabled)
+		println("debug.asyncpreemptoff:", debug.asyncpreemptoff)
+		println("debug.syncpreemptoff:", debug.syncpreemptoff)
 	}
 
 	lock(&sched.lock)
@@ -6179,7 +6204,9 @@ func preemptone(pp *p) bool {
 	// comparing the current stack pointer to gp->stackguard0.
 	// Setting gp->stackguard0 to StackPreempt folds
 	// preemption into the normal stack overflow check.
-	gp.stackguard0 = stackPreempt
+	if debug.syncpreemptoff == 0 {
+		gp.stackguard0 = stackPreempt
+	}
 
 	// Request an async preemption of this P.
 	if preemptMSupported && debug.asyncpreemptoff == 0 {
