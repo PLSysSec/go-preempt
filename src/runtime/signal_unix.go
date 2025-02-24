@@ -343,6 +343,8 @@ func doSigPreempt(gp *g, ctxt *sigctxt) {
 	// preempt.
 	if wantAsyncPreempt(gp) {
 		if ok, newpc := isAsyncSafePoint(gp, ctxt.sigpc(), ctxt.sigsp(), ctxt.siglr()); ok {
+			// gp.m.preemptGen.Add(1)
+
 			// Adjust the PC and inject a call to asyncPreempt.
 			ctxt.pushCall(abi.FuncPCABI0(asyncPreempt), newpc)
 		}
@@ -351,6 +353,11 @@ func doSigPreempt(gp *g, ctxt *sigctxt) {
 	// Acknowledge the preemption.
 	gp.m.preemptGen.Add(1)
 	gp.m.signalPending.Store(0)
+
+	// tmp := gp.m.preemptGen.Load()
+	// if tmp > 0 && tmp%10000 == 0 {
+	// 	println("preemptGen Signal:", tmp)
+	// }
 
 	if GOOS == "darwin" || GOOS == "ios" {
 		pendingPreemptSignals.Add(-1)

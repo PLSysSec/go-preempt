@@ -93,6 +93,8 @@ func uintrhandler(gp *g, frame *__uintr_frame) {
 	if wantAsyncPreempt(gp) {
 		ok, newpc := isAsyncSafePoint(gp, frame.rip, frame.rsp, 0)
 		if ok {
+			// gp.m.preemptGen.Add(1)
+
 			// Adjust the PC and inject a call to asyncPreempt
 			pushCall(abi.FuncPCABI0(asyncPreempt), newpc, frame)
 		}
@@ -101,6 +103,11 @@ func uintrhandler(gp *g, frame *__uintr_frame) {
 	// Acknowledge the preemption
 	gp.m.preemptGen.Add(1)
 	gp.m.signalPending.Store(0)
+
+	// tmp := gp.m.preemptGen.Load()
+	// if tmp > 0 && tmp%10000 == 0 {
+	// 	println("preemptGen UINTR:", tmp)
+	// }
 }
 
 func pushCall(targetPC uintptr, resumePC uintptr, frame *__uintr_frame) {

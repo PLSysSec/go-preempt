@@ -1071,6 +1071,12 @@ func newstack() {
 		}
 
 		gp.m.preemptGenSync.Add(1)
+
+		// tmp := gp.m.preemptGenSync.Load()
+		// if tmp > 0 && tmp%10000 == 0 {
+		// 	println("preemptGenSync:", tmp)
+		// }
+
 		// Act like goroutine called runtime.Gosched.
 		gopreempt_m(gp) // never return
 	}

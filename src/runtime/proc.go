@@ -806,7 +806,7 @@ var uintr_enabled = false
 var preempt_info_enabled = false
 var preempt_measure_enabled = false
 
-var sysmon_freq_netpoll_enabled = true
+var sysmon_freq_netpoll_enabled = false
 var sysmon_localrunq_enabled = false
 var dedicated_netcore_enabled = false
 var netpoll_prioritized = false
@@ -892,6 +892,9 @@ func schedinit() {
 	if n, ok := atoi32(gogetenv("GOFORCEPREEMPTNS")); ok && n > 0 {
 		forcePreemptNS = int64(n)
 		forcePreemptUS = uint32(forcePreemptNS / 1000)
+	}
+	if n, ok := atoi32(gogetenv("SYSMON_FREQ_NETPOLL")); ok && n == 1 {
+		sysmon_freq_netpoll_enabled = true
 	}
 	if n, ok := atoi32(gogetenv("PREEMPT_MEASURE")); ok && n == 1 {
 		preempt_measure_enabled = true
@@ -5898,6 +5901,7 @@ var needSysmonWorkaround bool = false
 func sysmon() {
 	if preempt_info_enabled {
 		println("force preempt ns:", forcePreemptNS, ", us:", forcePreemptUS)
+		println("sysmon_freq_netpoll_enabled:", sysmon_freq_netpoll_enabled)
 		println("preempt_measure_enabled:", preempt_measure_enabled)
 		println("debug.asyncpreemptoff:", debug.asyncpreemptoff)
 		println("debug.syncpreemptoff:", debug.syncpreemptoff)
@@ -6114,6 +6118,11 @@ func retake(now int64) uint32 {
 				pd.schedwhen = now
 			} else if (pd.schedwhen+forcePreemptNS <= now) &&
 				(pd.last_preempt+forcePreemptNS <= now) {
+				// if pp.runnext != 0 || pp.runqhead != pp.runqtail || sched.runqsize != 0 {
+				// if pp.runnext != 0 || pp.runqhead != pp.runqtail {
+				// 	pd.last_preempt = now
+				// 	preemptone(pp)
+				// }
 				if preemptone(pp) {
 					pd.last_preempt = now
 				}
