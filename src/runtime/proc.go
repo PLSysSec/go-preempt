@@ -3736,9 +3736,7 @@ func injectglistTonetq(glist *gList) {
 
 	startIdle := func(n int) {
 		for i := 0; i < n; i++ {
-			// println("in2 getg:", getg().goid)
 			mp := acquirem() // See comment in startm.
-			// println("in2:", mp, mp.procid)
 			lock(&sched.lock)
 
 			pp, _ := pidlegetSpinning(0)
@@ -5986,7 +5984,6 @@ func retake(now int64) uint32 {
 			} else if (pd.schedwhen+forcePreemptNS <= now) &&
 				(pd.last_preempt+forcePreemptNS <= now) {
 				// if pp.runnext != 0 || pp.runqhead != pp.runqtail || sched.runqsize != 0 {
-				// if pp.runnext != 0 || pp.runqhead != pp.runqtail {
 				// 	pd.last_preempt = now
 				// 	preemptone(pp)
 				// }

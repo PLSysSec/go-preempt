@@ -73,7 +73,6 @@ func uintrtrampgo(frame *__uintr_frame, vector int32) {
 //go:nosplit
 //go:nowritebarrierrec
 func uintrtrampgoempty(frame *__uintr_frame, vector int32) {
-	// print("uintrtrampgoempty")
 	gp := getg()
 	gp.m.preemptGen.Add(1)
 	gp.m.signalPending.Store(0)
