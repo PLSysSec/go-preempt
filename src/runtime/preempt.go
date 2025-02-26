@@ -404,6 +404,10 @@ func isAsyncSafePoint(gp *g, pc, sp, lr uintptr) (bool, uintptr) {
 		return false, 0
 	}
 	if fd := funcdata(f, abi.FUNCDATA_LocalsPointerMaps); fd == nil || f.flag&abi.FuncFlagAsm != 0 {
+		// if fd == nil {
+		// 	println(f.nameOff, funcname(f))
+		// 	gp.m.preemptGen.Add(1)
+		// }
 		// This is assembly code. Don't assume it's well-formed.
 		// TODO: Empirically we still need the fd == nil check. Why?
 		//

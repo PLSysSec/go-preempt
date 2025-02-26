@@ -616,27 +616,6 @@ type m struct {
 	uipiindex        int32
 	preemptsent      int32
 
-	// counters for netpoll measurement
-	netpoll_ticks       int64
-	netpoll_count       int32
-	netpoll_empty_ticks int64
-	netpoll_empty_count int32
-	netpoll_count2      int32
-	injectg_count       int32
-	injectg_global1     int32
-	injectg_global2     int32
-	injectg_local       int32
-
-	// get_netq    int32
-	// ready_local int32
-	// get_local   int32
-	// get_local2  int32
-	// get_global  int32
-
-	// exitsyscall_all  int32
-	// exitsyscall_fast int32
-	// exitsyscall_slow int32
-
 	dlogPerM
 
 	mOS
@@ -669,7 +648,6 @@ type p struct {
 	runqhead uint32
 	runqtail uint32
 	runq     [256]guintptr
-
 	// runnext, if non-nil, is a runnable G that was ready'd by
 	// the current G and should be run next instead of what's in
 	// runq if there's time remaining in the running G's time
@@ -684,9 +662,6 @@ type p struct {
 	// only the owner P can CAS it to a valid G.
 	runnext guintptr
 
-	// runq2head uint32
-	// runq2tail uint32
-	// runq2     [128]guintptr
 	netqhead uint32
 	netqtail uint32
 	netq     [128]guintptr

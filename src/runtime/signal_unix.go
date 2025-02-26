@@ -357,6 +357,11 @@ func doSigPreempt(gp *g, ctxt *sigctxt) {
 	// tmp := gp.m.preemptGen.Load()
 	// if tmp > 0 && tmp%10000 == 0 {
 	// 	println("preemptGen Signal:", tmp)
+	// 	var totalPreemptGen uint32
+	// 	for mp := allm; mp != nil; mp = mp.alllink {
+	// 		totalPreemptGen += mp.preemptGen.Load()
+	// 	}
+	// 	println("preemptGen total:", totalPreemptGen)
 	// }
 
 	if GOOS == "darwin" || GOOS == "ios" {

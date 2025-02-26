@@ -200,11 +200,9 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 	}
 
 	lock(&c.lock)
-	// DisablePreemption()
 
 	if c.closed != 0 {
 		unlock(&c.lock)
-		// ReEnablePreemption()
 		panic(plainError("send on closed channel"))
 	}
 
@@ -212,7 +210,6 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 		// Found a waiting receiver. We pass the value we want to send
 		// directly to the receiver, bypassing the channel buffer (if any).
 		send(c, sg, ep, func() { unlock(&c.lock) }, 3)
-		// ReEnablePreemption()
 		return true
 	}
 
@@ -229,17 +226,13 @@ func chansend(c *hchan, ep unsafe.Pointer, block bool, callerpc uintptr) bool {
 		}
 		c.qcount++
 		unlock(&c.lock)
-		// ReEnablePreemption()
 		return true
 	}
 
 	if !block {
 		unlock(&c.lock)
-		// ReEnablePreemption()
 		return false
 	}
-
-	// ReEnablePreemption()
 
 	// Block on the channel. Some receiver will complete our operation for us.
 	gp := getg()
